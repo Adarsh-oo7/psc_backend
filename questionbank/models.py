@@ -35,20 +35,35 @@ class Topic(models.Model):
     def __str__(self):
         return self.name
 
+# In questionbank/models.py
+
 class Question(models.Model):
-    exam = models.ForeignKey('Exam', on_delete=models.CASCADE, related_name='questions')
-    topic = models.ForeignKey('Topic', on_delete=models.CASCADE, related_name='questions')
+    # The temporary 'old_exam' field is now completely removed.
+    
+    # Only the new ManyToManyField remains. This is the final version.
+    exams = models.ManyToManyField('Exam', related_name='questions')
+    
+    sub_topic = models.CharField(max_length=255, blank=True, help_text="e.g., Indian Freedom Movement")
+    topic = models.ForeignKey('Topic', on_delete=models.CASCADE, related_name='questions_topic')
     text = models.TextField()
     options = models.JSONField()
     correct_answer = models.CharField(max_length=1)
     explanation = models.TextField(blank=True)
-    difficulty = models.CharField(max_length=20, choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')], default='medium')
-    institute = models.ForeignKey('institutes.Institute', on_delete=models.CASCADE, null=True, blank=True, related_name='questions')
+    difficulty = models.CharField(
+        max_length=20,
+        choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')],
+        default='medium'
+    )
+    institute = models.ForeignKey(
+        'institutes.Institute', 
+        on_delete=models.CASCADE, 
+        null=True, 
+        blank=True, 
+        related_name='questions_institute'
+    )
     
     def __str__(self):
         return self.text[:50]
-
-
 # ===================================================================
 # --- Models for User Data & Tracking ---
 # ===================================================================

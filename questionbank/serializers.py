@@ -57,6 +57,18 @@ class UserAnswerSerializer(serializers.ModelSerializer):
         fields = ['question', 'selected_option']
 
 
+# In questionbank/serializers.py
+
+class DetailedUserAnswerSerializer(serializers.ModelSerializer):
+    """
+    Provides full details about a user's answer, including the nested question.
+    """
+    question = QuestionSerializer(read_only=True)
+
+    class Meta:
+        model = UserAnswer
+        fields = ['id', 'question', 'selected_option', 'is_correct', 'answered_at']
+
 # ===================================================================
 # --- Main UserProfile Serializer ---
 # ===================================================================

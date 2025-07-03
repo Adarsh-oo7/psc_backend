@@ -1,15 +1,59 @@
 {% extends "admin/base_site.html" %}
 {% load i18n %}
 
+{% block title %}Bulk Upload Questions | {{ site_title|default:_('Django site admin') }}{% endblock %}
+
+{% block breadcrumbs %}
+<div class="breadcrumbs">
+<a href="{% url 'admin:index' %}">{% trans 'Home' %}</a>
+&rsaquo; <a href="{% url 'admin:app_list' app_label='questionbank' %}">{% trans 'Questionbank' %}</a>
+&rsaquo; <a href="{% url 'admin:questionbank_question_changelist' %}">{% trans 'Questions' %}</a>
+&rsaquo; {% trans 'Bulk Upload' %}
+</div>
+{% endblock %}
+
 {% block content %}
+<div id="content-main">
     <h1>Bulk Upload Questions</h1>
-    <p>Paste your formatted questions below and click save.</p>
+    <p>Use this form to upload multiple questions at once by pasting formatted text.</p>
+
+    {# This section will display success or error messages after you submit #}
+    {% if messages %}
+    <ul class="messagelist">
+        {% for message in messages %}
+        <li class="{{ message.tags }}">{{ message }}</li>
+        {% endfor %}
+    </ul>
+    {% endif %}
 
     <form action="" method="post">
         {% csrf_token %}
-        {{ form.as_p }}
+        <fieldset class="module aligned">
+            {{ form.as_p }}
+        </fieldset>
         <div class="submit-row">
-            <input type="submit" value="Save Questions" class="default">
+            <input type="submit" value="Parse & Save Questions" class="default">
         </div>
     </form>
+
+    <br>
+    <hr>
+
+    <h2>Formatting Instructions</h2>
+    <p>Each question must follow this exact format. A blank line between questions is recommended.</p>
+    <pre style="background-color: #f4f4f4; border: 1px solid #ddd; padding: 10px; border-radius: 4px; white-space: pre-wrap;">
+1. Which of the following is a primary color?
+```json
+{
+  "A": "Green",
+  "B": "Orange",
+  "C": "Blue",
+  "D": "Purple"
+}Answer: C
+Explanation: The primary colors in the additive model (light) are Red, Green, and Blue (RGB).
+Difficulty: Easy
+Category: General Knowledge
+Suitable for: All PSC Exams
+
+
 {% endblock %}

@@ -97,28 +97,40 @@ class TopicListView(generics.ListAPIView):
             base_query |= Q(institute=user.userprofile.institute)
         return Topic.objects.filter(base_query).distinct().order_by('name')
 
+# In questionbank/views.py
+
 class QuestionListView(generics.ListAPIView):
-    """Lists questions for simple quizzes, with filtering."""
+    """
+    Lists questions for simple quizzes, with filtering.
+    Now correctly filters across the new many-to-many relationship with Exams.
+    """
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
+
     def get_queryset(self):
         user = self.request.user
         base_query = Q(institute__isnull=True)
         if user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile.institute:
             base_query |= Q(institute=user.userprofile.institute)
+        
         allowed_questions = Question.objects.filter(base_query)
         
         exam_id = self.request.query_params.get('exam_id')
         if exam_id:
-            allowed_questions = allowed_questions.filter(exam_id=exam_id)
+            # CORRECTED: Use 'exams__id' to filter across the many-to-many relationship
+            allowed_questions = allowed_questions.filter(exams__id=exam_id)
+        
         topic_id = self.request.query_params.get('topic_id')
         if topic_id:
             allowed_questions = allowed_questions.filter(topic_id=topic_id)
+        
         limit = self.request.query_params.get('limit')
         if limit and limit.isdigit():
             return allowed_questions.order_by('?')[:int(limit)]
             
         return allowed_questions.distinct()
+    
+    
 
 class DailyQuestionView(views.APIView):
     """Provides a single random question for a daily quiz."""
@@ -223,16 +235,20 @@ class SubmitExamView(views.APIView):
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
-    
-# In questionbank/views.py
-# In questionbank/views.py
+  # In questionbank/views.py
 
-from django.db.models import Q, Count, Case, When, FloatField, F # CORRECTED: Added F
+from rest_framework import views
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.db.models import Count, Case, When, FloatField, F
+from django.db.models.functions import Cast
+from .models import UserAnswer, Topic, Question, Exam
+from .serializers import DetailedUserAnswerSerializer
 
 class MyProgressDashboardView(views.APIView):
     """
-    Calculates and returns personalized, detailed progress stats. Can be filtered by a 
-    user's target exam or show overall performance.
+    Calculates and returns personalized, detailed progress stats. If no data exists for the
+    user's focus exam, it automatically falls back to showing the overall report.
     """
     permission_classes = [IsAuthenticated]
 
@@ -240,29 +256,29 @@ class MyProgressDashboardView(views.APIView):
         user = request.user
         profile = user.userprofile
         
-        # Check for the view mode from the frontend ('focus' or 'overall')
         mode = request.query_params.get('mode', 'focus')
 
-        # Start with all of the user's answers
-        answers = UserAnswer.objects.filter(user=user).select_related('question__topic', 'question__exam')
+        # Start with all of the user's answers, pre-fetching related data for efficiency
+        all_answers = UserAnswer.objects.filter(user=user).select_related('question__topic')
 
-        report_title = "All Your Activity" # Default title for overall report
+        # This will be our final queryset for calculations
+        answers_to_process = all_answers
+        report_title = "Overall Report"
 
-        # If in 'focus' mode, filter the answers down to the target exam's topics
         if mode == 'focus':
-            target_exam = profile.preferred_exams.first()
-            if not target_exam:
-                return Response({"message": "Please set a focus exam in your profile to see a personalized report."})
+            focus_exams = profile.preferred_exams.all()
+            if not focus_exams.exists():
+                return Response({"message": "Please set one or more focus exams in your profile to see a personalized report."})
             
-            report_title = target_exam.name
-            exam_topics = Topic.objects.filter(examsyllabus__exam=target_exam).distinct()
-            answers = answers.filter(question__topic__in=exam_topics)
-
-        if not answers.exists():
+            report_title = f"Focus Report: {', '.join([exam.name for exam in focus_exams])}"
+            # Filter answers to only include questions from the user's focus exams
+            answers_to_process = all_answers.filter(question__exams__in=focus_exams)
+        
+        if not answers_to_process.exists():
             return Response({"message": f"No progress data available yet for '{report_title}'. Start taking quizzes!"})
             
         # --- 1. Calculate Performance by Topic ---
-        topic_performance = answers.values(
+        topic_performance = answers_to_process.values(
             'question__topic__name', 
             'question__topic__id'
         ).annotate(
@@ -270,29 +286,31 @@ class MyProgressDashboardView(views.APIView):
             correct=Count(Case(When(is_correct=True, then=1)))
         ).annotate(
             wrong=F('total') - F('correct'),
-            accuracy=Cast('correct', FloatField()) * 100.0 / Cast('total', FloatField()),
+            accuracy=Cast('correct', FloatField()) * 100.0 / F('total'),
             marks_lost=(F('wrong') * 1.33)
         )
 
         # --- 2. Calculate Performance by Exam ---
-        exam_performance = answers.values(
-            'question__exam__name', 
-            'question__exam__year'
+        exam_performance = answers_to_process.values(
+            'question__exams__name' # Query through the M2M relationship
         ).annotate(
             total=Count('id'),
             correct=Count(Case(When(is_correct=True, then=1)))
         ).annotate(
-            accuracy=Cast('correct', FloatField()) * 100.0 / Cast('total', FloatField())
+            accuracy=Cast('correct', FloatField()) * 100.0 / F('total')
         )
 
         # --- 3. Calculate Overall Stats ---
-        total_answered = answers.count()
-        correct_count = answers.filter(is_correct=True).count()
+        total_answered = answers_to_process.count()
+        correct_count = answers_to_process.filter(is_correct=True).count()
         wrong_count = total_answered - correct_count
         net_marks = (correct_count * 1) - (wrong_count * 0.33)
         accuracy = (correct_count * 100.0 / total_answered) if total_answered > 0 else 0
         
-        # --- 4. Assemble the final data object for the API response ---
+        # --- 4. Get Recent Answer History ---
+        recent_answers = answers_to_process.order_by('-answered_at')[:50]
+
+        # --- 5. Assemble the final data object for the API response ---
         data = {
             'report_title': report_title,
             'overall_stats': {
@@ -306,9 +324,9 @@ class MyProgressDashboardView(views.APIView):
             'exam_performance': list(exam_performance.order_by('-accuracy')),
             'strongest_topics': list(topic_performance.order_by('-accuracy')[:3]),
             'weakest_topics': list(topic_performance.filter(wrong__gt=0).order_by('-marks_lost')[:3]),
+            'answer_history': DetailedUserAnswerSerializer(recent_answers, many=True).data
         }
         return Response(data)
-    
 # ===================================================================
 # --- OTHER PROTECTED USER ACTION VIEWS ---
 # ===================================================================
