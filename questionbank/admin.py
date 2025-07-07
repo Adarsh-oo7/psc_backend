@@ -1,5 +1,6 @@
 import json
 import re
+import traceback
 from django.contrib import admin, messages
 from django.urls import path
 from django.shortcuts import render, redirect
@@ -24,11 +25,13 @@ class ExamCategoryAdmin(admin.ModelAdmin):
     list_editable = ('order',)
     search_fields = ('name',)
 
+
 @admin.register(Exam)
 class ExamAdmin(admin.ModelAdmin):
     list_display = ('name', 'year', 'category', 'duration_minutes')
     list_filter = ('category', 'year')
     search_fields = ('name',)
+
 
 @admin.register(Topic)
 class TopicAdmin(admin.ModelAdmin):
@@ -36,15 +39,6 @@ class TopicAdmin(admin.ModelAdmin):
     list_filter = ('institute',)
     search_fields = ('name',)
 
-
-
-    
-import re
-import json
-import traceback
-from django.contrib import admin, messages
-from django.shortcuts import render, redirect
-from django.urls import path
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
@@ -77,52 +71,155 @@ class QuestionAdmin(admin.ModelAdmin):
             if form.is_valid():
                 questions_text = form.cleaned_data['questions_text']
                 
-                # Updated regex pattern to handle your format
+                # PSC-specific exam mapping with exact names
+                psc_exam_mapping = {
+                    # Driver related
+                    'driver': 'Driver (Light / Heavy) (2025)',
+                    'driver (light / heavy)': 'Driver (Light / Heavy) (2025)',
+                    'driver (light/heavy)': 'Driver (Light / Heavy) (2025)',
+                    'driver (light / heavy) (2025)': 'Driver (Light / Heavy) (2025)',
+                    'driver (ldv / hdv)': 'Driver (LDV / HDV) (1000)',
+                    'driver (ldv/hdv)': 'Driver (LDV / HDV) (1000)',
+                    'ldv': 'Driver (LDV / HDV) (1000)',
+                    'hdv': 'Driver (LDV / HDV) (1000)',
+                    
+                    # Police related
+                    'police constable': 'Police Constable (2025)',
+                    'police constable (2025)': 'Police Constable (2025)',
+                    'civil police officer': 'Civil Police Officer (CPO) (2025)',
+                    'civil police officer (cpo)': 'Civil Police Officer (CPO) (2025)',
+                    'cpo': 'Civil Police Officer (CPO) (2025)',
+                    'sub inspector': 'Sub Inspector of Police (SI) (2025)',
+                    'sub inspector of police': 'Sub Inspector of Police (SI) (2025)',
+                    'si': 'Sub Inspector of Police (SI) (2025)',
+                    'si (2025)': 'Sub Inspector of Police (SI) (2025)',
+                    
+                    # Fire service
+                    'fireman': 'Fireman (2025)',
+                    'fireman (2025)': 'Fireman (2025)',
+                    
+                    # Clerical positions
+                    'last grade servant': 'Last Grade Servant (LGS) (2025)',
+                    'lgs': 'Last Grade Servant (LGS) (2025)',
+                    'lgs (2025)': 'Last Grade Servant (LGS) (2025)',
+                    'peon': 'Peon / Attender (2025)',
+                    'attender': 'Peon / Attender (2025)',
+                    'peon / attender': 'Peon / Attender (2025)',
+                    'peon/attender': 'Peon / Attender (2025)',
+                    'typist': 'Typist / Clerk Typist (2025)',
+                    'clerk typist': 'Typist / Clerk Typist (2025)',
+                    'typist / clerk typist': 'Typist / Clerk Typist (2025)',
+                    'ld clerk': 'LD Clerk (LDC) (2025)',
+                    'ldc': 'LD Clerk (LDC) (2025)',
+                    'ld clerk (ldc)': 'LD Clerk (LDC) (2025)',
+                    
+                    # Assistant positions
+                    'assistant': 'Assistant / Junior Assistant (Various Depts.) (2025)',
+                    'junior assistant': 'Assistant / Junior Assistant (Various Depts.) (2025)',
+                    'assistant / junior assistant': 'Assistant / Junior Assistant (Various Depts.) (2025)',
+                    'secretariat assistant': 'Secretariat Assistant / Auditor (2025)',
+                    'auditor': 'Secretariat Assistant / Auditor (2025)',
+                    'secretariat assistant / auditor': 'Secretariat Assistant / Auditor (2025)',
+                    'university assistant': 'University Assistant (2025)',
+                    'assistant grade ii': 'Assistant Grade II (2025)',
+                    'grade ii': 'Assistant Grade II (2025)',
+                    
+                    # Specialized positions
+                    'sales assistant': 'Sales Assistant (Bevco) (2025)',
+                    'sales assistant (bevco)': 'Sales Assistant (Bevco) (2025)',
+                    'bevco': 'Sales Assistant (Bevco) (2025)',
+                    'civil excise officer': 'Civil Excise Officer (2025)',
+                    'excise inspector': 'Excise Inspector (2025)',
+                    'beat forest officer': 'Beat Forest Officer (2025)',
+                    'forest officer': 'Beat Forest Officer (2025)',
+                    'assistant prison officer': 'Assistant Prison Officer (2025)',
+                    'prison officer': 'Assistant Prison Officer (2025)',
+                    
+                    # Engineering
+                    'assistant engineer': 'Assistant Engineer (Civil, Mechanical, Electrical) (2025)',
+                    'assistant engineer (civil, mechanical, electrical)': 'Assistant Engineer (Civil, Mechanical, Electrical) (2025)',
+                    
+                    # Health services
+                    'junior health inspector': 'Junior Health Inspector (2025)',
+                    'health inspector': 'Junior Health Inspector (2025)',
+                    'staff nurse': 'Staff Nurse (2025)',
+                    'nurse': 'Staff Nurse (2025)',
+                    'pharmacist': 'Pharmacist (2025)',
+                    'lab assistant': 'Lab Assistant / Lab Technician (2025)',
+                    'lab technician': 'Lab Assistant / Lab Technician (2025)',
+                    'lab assistant / lab technician': 'Lab Assistant / Lab Technician (2025)',
+                    
+                    # Education
+                    'lp school assistant': 'LP / UP School Assistant (2025)',
+                    'up school assistant': 'LP / UP School Assistant (2025)',
+                    'school assistant': 'LP / UP School Assistant (2025)',
+                    'lp / up school assistant': 'LP / UP School Assistant (2025)',
+                    'high school assistant': 'High School Assistant (HSA) (2025)',
+                    'hsa': 'High School Assistant (HSA) (2025)',
+                    'hsa (2025)': 'High School Assistant (HSA) (2025)',
+                    'vocational teacher': 'Vocational Teacher (2025)',
+                    'higher secondary school teacher': 'Higher Secondary School Teacher (HSST) (2025)',
+                    'hsst': 'Higher Secondary School Teacher (HSST) (2025)',
+                    'hsst (2025)': 'Higher Secondary School Teacher (HSST) (2025)',
+                    'hsst computer science': 'HSST Computer Science (2025)',
+                    'computer science': 'HSST Computer Science (2025)',
+                    
+                    # VEO
+                    'veo': 'Village Extension Officer (VEO) (2025)',
+                    'village extension officer': 'Village Extension Officer (VEO) (2025)',
+                    'village extension officer (veo)': 'Village Extension Officer (VEO) (2025)',
+                    
+                    # General
+                    'degree level preliminary exam': 'Degree Level Preliminary Exam (2025)',
+                    'degree level': 'Degree Level Preliminary Exam (2025)',
+                    'preliminary exam': 'Degree Level Preliminary Exam (2025)',
+                    'general psc': 'General PSC (2025)',
+                    'psc': 'General PSC (2025)',
+                    'general': 'General PSC (2025)',
+                }
+                
+                # Improved regex pattern
                 pattern = re.compile(
-                    r'\*?\*?(\d+)\.\s+(.*?)\s*'  # Question number and text
+                    r'\*{0,2}(\d+)\.\s+(.*?)\s*'  # Question number and text
                     r'```json\s*(\{.*?\})\s*```\s*'  # JSON options
-                    r'\*?\*?Answer:\s*([A-D])\*?\*?\s*'  # Answer
-                    r'(?:\*?Explanation:\s*(.*?)\s*)?'  # Optional explanation
-                    r'\*?\*?Difficulty:\s*(.*?)\*?\*?\s*'  # Difficulty
-                    r'\*?\*?Category:\s*(.*?)\s*\|\s*Suitable for:\s*(.*?)(?=\n\n|\*\*\d+\.|\Z)',  # Category and suitable for
+                    r'\*{0,2}Answer:\s*([A-D])\*{0,2}\s*'  # Answer
+                    r'(?:\*{0,2}Explanation:\s*(.*?)\s*)?'  # Optional explanation
+                    r'\*{0,2}Difficulty:\s*(.*?)\*{0,2}\s*'  # Difficulty
+                    r'\*{0,2}Category:\s*(.*?)\s*\|\s*Suitable for:\s*(.*?)(?=\n\n|\*{0,2}\d+\.|\Z)',  # Category and suitable for
                     re.MULTILINE | re.DOTALL
                 )
                 
                 saved_count, error_count, skipped_count = 0, 0, 0
                 
-                print(f"Input text length: {len(questions_text)}")  # Debug
-                print(f"First 500 chars: {questions_text[:500]}")  # Debug
+                print(f"Input text length: {len(questions_text)}")
+                print(f"First 500 chars: {questions_text[:500]}")
 
                 matches = list(pattern.finditer(questions_text))
-                print(f"Found {len(matches)} matches")  # Debug
+                print(f"Found {len(matches)} matches")
 
                 for i, match in enumerate(matches):
-                    print(f"Match groups: {match.groups()}")
-                    for j, group in enumerate(match.groups()):
-                        print(f"Group {j}: {repr(group)}")
+                    print(f"\n--- Processing Match {i+1} ---")
+                    
                     try:
                         question_num = match.group(1)
-                        # Clean up question text - remove extra asterisks
                         text = match.group(2).strip().rstrip('*').strip()
                         options_json = match.group(3)
                         answer = match.group(4).strip().upper()
-                        # Clean up explanation - remove leading/trailing asterisks
                         explanation = match.group(5).strip().strip('*').strip() if match.group(5) else ""
                         difficulty = match.group(6).strip().lower()
                         category_info = match.group(7).strip()
-                        # Clean up suitable_for - remove extra asterisks and carriage returns
                         suitable_for = match.group(8).strip().rstrip('*').replace('\r', '').replace('\n', '').strip()
                         
-                        print(f"Processing question {question_num}: {text[:50]}...")  # Debug
-                        print(f"Cleaned suitable_for: '{suitable_for}'")  # Debug
+                        print(f"Question {question_num}: {text[:50]}...")
+                        print(f"Suitable for: '{suitable_for}'")
                         
                         # Check for duplicates
                         if Question.objects.filter(text__iexact=text).exists():
-                            print(f"Skipping duplicate: {text[:50]}")  # Debug
+                            print(f"Skipping duplicate: {text[:50]}")
                             skipped_count += 1
                             continue
                         
-                        # Parse category (take the part before |)
+                        # Parse category
                         category_name = category_info.split('|')[0].strip()
                         if not category_name:
                             raise ValueError("Category cannot be empty")
@@ -141,26 +238,90 @@ class QuestionAdmin(admin.ModelAdmin):
                         except json.JSONDecodeError as e:
                             raise ValueError(f"Invalid JSON format in options: {e}")
                         
-                        # Handle exams - clean up the suitable_for string
-                        if not suitable_for:
-                            suitable_for = "General"
+                        # Enhanced PSC exam matching logic
+                        exams_to_add = []
                         
-                        exam_names = [name.strip() for name in suitable_for.split(',')]
+                        if suitable_for and suitable_for.lower() != "general":
+                            # Split by comma and clean each exam name
+                            exam_names = [name.strip() for name in suitable_for.split(',')]
+                            print(f"Parsed exam names: {exam_names}")
+                            
+                            # Check if "All PSC Exams" is present
+                            has_all_psc = any(name.lower() in ['all psc exams', 'all psc', 'all', 'psc only'] 
+                                            for name in exam_names)
+                            
+                            if has_all_psc:
+                                print("Found 'All PSC Exams' - adding to General PSC only")
+                                # If "All PSC Exams" is present, add only to General PSC
+                                general_psc_exam, created = Exam.objects.get_or_create(
+                                    name="General PSC (2025)",
+                                    defaults={
+                                        'name': "General PSC (2025)", 
+                                        'year': 2025,
+                                        'category': ExamCategory.objects.first() or ExamCategory.objects.create(name="PSC", order=1)
+                                    }
+                                )
+                                if created:
+                                    print(f"Created General PSC exam")
+                                exams_to_add = [general_psc_exam]
+                            else:
+                                # Process individual exam names when "All PSC Exams" is not present
+                                for exam_name in exam_names:
+                                    exam_name_clean = exam_name.strip()
+                                    exam_name_lower = exam_name_clean.lower()
+                                    
+                                    print(f"Processing exam name: '{exam_name_clean}'")
+                                    
+                                    # Method 1: Direct PSC mapping lookup (highest priority)
+                                    if exam_name_lower in psc_exam_mapping:
+                                        mapped_name = psc_exam_mapping[exam_name_lower]
+                                        try:
+                                            exam = Exam.objects.get(name=mapped_name)
+                                            exams_to_add.append(exam)
+                                            print(f"✓ Found PSC mapped exam: {mapped_name}")
+                                            continue
+                                        except Exam.DoesNotExist:
+                                            print(f"✗ PSC mapped exam not found: {mapped_name}")
+                                    
+                                    # Method 2: Exact match (case-insensitive)
+                                    exam_qs = Exam.objects.filter(name__iexact=exam_name_clean)
+                                    if exam_qs.exists():
+                                        exams_to_add.extend(list(exam_qs))
+                                        print(f"✓ Found exact match: {exam_name_clean}")
+                                        continue
+                                    
+                                    # Method 3: Contains match for PSC exams only
+                                    exam_qs = Exam.objects.filter(name__icontains=exam_name_clean)
+                                    if exam_qs.exists():
+                                        # Filter to only PSC-related exams
+                                        psc_exams = [e for e in exam_qs if any(keyword in e.name.lower() 
+                                                    for keyword in ['psc', 'police', 'driver', 'assistant', 'clerk', 'inspector', 'officer'])]
+                                        if psc_exams:
+                                            exams_to_add.extend(psc_exams)
+                                            print(f"✓ Found PSC contains match: {[e.name for e in psc_exams]}")
+                                            continue
+                                    
+                                    print(f"✗ No PSC exam found for: {exam_name_clean}")
                         
-                        if "all psc exams" in suitable_for.lower():
-                            exams_qs = Exam.objects.all()
-                        else:
-                            # Try to find exams by name (case-insensitive)
-                            exams_qs = Exam.objects.filter(name__iregex=r'(' + '|'.join(exam_names) + ')')
+                        # Remove duplicates
+                        exams_to_add = list(set(exams_to_add))
                         
-                        if not exams_qs.exists():
-                            print(f"Warning: No exams found for: {suitable_for}")
-                            # Create a default exam if none found
-                            default_exam, _ = Exam.objects.get_or_create(
-                                name="General",
-                                defaults={'name': "General", 'year': 2024}
+                        # If no specific exams found and no "All PSC Exams", add to General PSC
+                        if not exams_to_add:
+                            print(f"⚠ No PSC exams found, adding to General PSC")
+                            general_psc_exam, created = Exam.objects.get_or_create(
+                                name="General PSC (2025)",
+                                defaults={
+                                    'name': "General PSC (2025)", 
+                                    'year': 2025,
+                                    'category': ExamCategory.objects.first() or ExamCategory.objects.create(name="PSC", order=1)
+                                }
                             )
-                            exams_qs = Exam.objects.filter(id=default_exam.id)
+                            if created:
+                                print(f"Created General PSC exam")
+                            exams_to_add = [general_psc_exam]
+                        
+                        print(f"Final exams to add: {[e.name for e in exams_to_add]}")
                         
                         # Validate difficulty
                         valid_difficulties = ['easy', 'medium', 'hard']
@@ -180,15 +341,15 @@ class QuestionAdmin(admin.ModelAdmin):
                         )
                         
                         # Set exams
-                        question.exams.set(exams_qs)
+                        question.exams.set(exams_to_add)
                         saved_count += 1
-                        print(f"Successfully saved question {question_num}")  # Debug
+                        print(f"✓ Successfully saved question {question_num}")
                         
                     except Exception as e:
                         error_count += 1
                         error_msg = f"Error processing question {i+1}: {str(e)}"
-                        print(error_msg)  # Debug
-                        print(f"Full traceback: {traceback.format_exc()}")  # Add full traceback for debugging
+                        print(f"✗ {error_msg}")
+                        print(f"Full traceback: {traceback.format_exc()}")
                         messages.error(request, error_msg)
 
                 # Show results
@@ -221,13 +382,34 @@ class QuestionAdmin(admin.ModelAdmin):
 **Answer: A**
 *Explanation: Your explanation here*
 **Difficulty: Easy**
-**Category: Your Category | Suitable for: HSST Computer Science**
+**Category: Your Category | Suitable for: Driver (Light / Heavy) (2025)**
 
 **2. Next question...**
         </pre>
+        <h3>PSC Exam Matching:</h3>
+        <ul>
+            <li><strong>All PSC Exams:</strong> Use "All PSC Exams" or "All PSC" to add to General PSC only (other specific exams in the same list will be ignored)</li>
+            <li><strong>Specific exams:</strong> Use exact names like "Driver (Light / Heavy) (2025)", "HSA", "SI", "LDC", "VEO", etc.</li>
+            <li><strong>General PSC:</strong> Use "General" for general PSC questions</li>
+            <li><strong>Multiple exams:</strong> Separate with commas: "Driver, Police Constable, HSA"</li>
+            <li><strong>Abbreviations work:</strong> HSA, LGS, SI, CPO, LDC, VEO, etc.</li>
+        </ul>
+        <h3>Priority Matching:</h3>
+        <ol>
+            <li>If "All PSC Exams" is present → Add to General PSC only</li>
+            <li>Exact PSC exam name mapping</li>
+            <li>Case-insensitive exact match</li>
+            <li>PSC-related contains match only</li>
+            <li>Default to General PSC if no match found</li>
+        </ol>
+        <h3>Examples:</h3>
+        <ul>
+            <li><strong>"All PSC Exams, LDC, HSA"</strong> → Only adds to General PSC</li>
+            <li><strong>"LDC, HSA, Driver"</strong> → Adds to specific LDC, HSA, and Driver exams</li>
+            <li><strong>"All PSC"</strong> → Adds to General PSC only</li>
+        </ul>
         """
         return render(request, 'admin/questionbank/question/bulk_upload.html', context)
-    
 
 
 @admin.register(ExamSyllabus)
@@ -235,10 +417,27 @@ class ExamSyllabusAdmin(admin.ModelAdmin):
     list_display = ('exam', 'topic', 'num_questions')
     list_filter = ('exam',)
 
+
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ('user', 'institute', 'place')
+    # Add the new field to the list display
+    list_display = ('user', 'institute', 'is_content_creator')
+    list_filter = ('institute', 'is_content_creator')
     search_fields = ('user__username', 'institute__name')
+    
+    # Add the field to the form for editing
+    fieldsets = (
+        ('Account Information', {
+            'fields': ('user', 'institute', 'is_content_creator')
+        }),
+        ('Personal Details', {
+            'fields': ('profile_photo', 'qualifications', 'date_of_birth', 'place')
+        }),
+        ('User Preferences', {
+            'fields': ('preferred_difficulty', 'preferred_topics', 'preferred_exams')
+        }),
+    )
+
 
 @admin.register(UserAnswer)
 class UserAnswerAdmin(admin.ModelAdmin):
@@ -251,6 +450,6 @@ class UserAnswerAdmin(admin.ModelAdmin):
         return obj.question.text[:50]
 
 
-# Register the remaining simple models.
+# Register the remaining simple models
 admin.site.register(Bookmark)
 admin.site.register(Report)

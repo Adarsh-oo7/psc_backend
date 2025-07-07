@@ -101,33 +101,42 @@ class TopicListView(generics.ListAPIView):
 
 class QuestionListView(generics.ListAPIView):
     """
-    Lists questions for simple quizzes, with filtering.
-    Now correctly filters across the new many-to-many relationship with Exams.
+    Lists questions available to the user.
+    - Can be filtered by `exam_id` or `topic_id`.
+    - Can be limited to a random subset using the `limit` parameter for Quiz Mode.
     """
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         user = self.request.user
+        
+        # Start with a base of questions that are "Global" (have no institute)
         base_query = Q(institute__isnull=True)
+
+        # If the user is logged in and belongs to an institute, also include that institute's private questions
         if user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile.institute:
             base_query |= Q(institute=user.userprofile.institute)
         
         allowed_questions = Question.objects.filter(base_query)
         
+        # Apply filters from the URL query parameters
         exam_id = self.request.query_params.get('exam_id')
         if exam_id:
-            # CORRECTED: Use 'exams__id' to filter across the many-to-many relationship
+            # Correctly filter across the 'exams' many-to-many relationship
             allowed_questions = allowed_questions.filter(exams__id=exam_id)
         
         topic_id = self.request.query_params.get('topic_id')
         if topic_id:
             allowed_questions = allowed_questions.filter(topic_id=topic_id)
         
+        # This is the logic that enables both Study Mode and Quiz Mode
         limit = self.request.query_params.get('limit')
         if limit and limit.isdigit():
+            # For Quiz Mode: order randomly and take the specified number of questions
             return allowed_questions.order_by('?')[:int(limit)]
             
+        # For Study Mode (no limit specified): return all matching questions
         return allowed_questions.distinct()
     
     

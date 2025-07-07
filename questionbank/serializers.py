@@ -4,8 +4,8 @@ from django.db.models import Sum
 
 # --- Local application models ---
 from .models import (
-    Exam, Topic, Question, Bookmark, Report, 
-    UserProfile, UserAnswer, ExamCategory
+    ExamCategory, Exam, Topic, Question, Bookmark, Report, 
+    UserProfile, UserAnswer, ExamSyllabus
 )
 # --- Cross-application models ---
 from institutes.models import Institute
@@ -31,9 +31,14 @@ class TopicSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'institute', 'image']
 
 class QuestionSerializer(serializers.ModelSerializer):
+    # CORRECTED: This now includes all the new fields for a question
+    exams = ExamSerializer(many=True, read_only=True)
     class Meta:
         model = Question
-        fields = ['id', 'text', 'options', 'correct_answer', 'explanation', 'difficulty', 'institute']
+        fields = [
+            'id', 'text', 'options', 'correct_answer', 'explanation', 
+            'difficulty', 'institute', 'topic', 'sub_topic', 'exams'
+        ]
 
 class BookmarkSerializer(serializers.ModelSerializer):
     class Meta:
@@ -56,22 +61,20 @@ class UserAnswerSerializer(serializers.ModelSerializer):
         model = UserAnswer
         fields = ['question', 'selected_option']
 
-
-# In questionbank/serializers.py
-
 class DetailedUserAnswerSerializer(serializers.ModelSerializer):
-    """
-    Provides full details about a user's answer, including the nested question.
-    """
+    """Provides full details about a user's answer for the history/review page."""
     question = QuestionSerializer(read_only=True)
-
     class Meta:
         model = UserAnswer
         fields = ['id', 'question', 'selected_option', 'is_correct', 'answered_at']
 
+
 # ===================================================================
 # --- Main UserProfile Serializer ---
 # ===================================================================
+# In questionbank/serializers.py
+import json
+# ... all other imports ...
 
 class UserProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -83,8 +86,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     preferred_topics = TopicSerializer(many=True, read_only=True)
     preferred_exams = ExamSerializer(many=True, read_only=True)
 
-    profile_photo_upload = serializers.ImageField(write_only=True, required=False, allow_null=True)
-    preferred_topics_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    # These fields are for WRITING data from the app to the backend
+    profile_photo_upload = serializers.ImageField(source='profile_photo', write_only=True, required=False, allow_null=True)
+    preferred_topics_ids = serializers.PrimaryKeyRelatedField(
+        queryset=Topic.objects.all(), source='preferred_topics', many=True, write_only=True, required=False
+    )
     preferred_exams_ids = serializers.PrimaryKeyRelatedField(
         queryset=Exam.objects.all(), source='preferred_exams', many=True, write_only=True, required=False
     )
@@ -92,11 +98,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload', 
+            'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload',
             'qualifications', 'date_of_birth', 'place', 'preferred_difficulty',
-            'is_owner', 'join_request_status', 'fee_status', 
+            'is_owner', 'join_request_status', 'fee_status',
             'preferred_topics', 'preferred_topics_ids',
-            'preferred_exams', 'preferred_exams_ids'
+            'preferred_exams', 'preferred_exams_ids',
+            'is_content_creator'
         ]
 
     def get_institute(self, obj):
@@ -115,16 +122,21 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return Institute.objects.filter(owner=obj.user).exists()
 
     def get_join_request_status(self, obj):
-        pending_request = obj.join_requests.filter(status='pending').first()
-        if pending_request:
-            return f"Request to join '{pending_request.institute.name}' is pending."
+        # This requires the 'join_requests' related_name on the InstituteJoinRequest model
+        if hasattr(obj, 'join_requests'):
+            pending_request = obj.join_requests.filter(status='pending').first()
+            if pending_request:
+                return f"Request to join '{pending_request.institute.name}' is pending."
         return None
 
     def get_fee_status(self, obj):
-        total_dues = obj.fee_items.aggregate(total=Sum('amount'))['total'] or 0
-        total_paid = obj.payments.aggregate(total=Sum('amount'))['total'] or 0
-        balance = total_dues - total_paid
-        return {'total_fees': total_dues, 'amount_paid': total_paid, 'balance_due': balance}
+        # This requires the 'fee_items' and 'payments' related_names on their respective models
+        if hasattr(obj, 'fee_items') and hasattr(obj, 'payments'):
+            total_dues = obj.fee_items.aggregate(total=Sum('amount'))['total'] or 0
+            total_paid = obj.payments.aggregate(total=Sum('amount'))['total'] or 0
+            balance = total_dues - total_paid
+            return {'total_fees': total_dues, 'amount_paid': total_paid, 'balance_due': balance}
+        return None
     
     def validate_preferred_exams_ids(self, value):
         if len(value) > 3:
@@ -132,21 +144,27 @@ class UserProfileSerializer(serializers.ModelSerializer):
         return value
 
     def update(self, instance, validated_data):
-        profile_photo_upload = validated_data.pop('profile_photo_upload', None)
-        if profile_photo_upload:
-            if instance.profile_photo:
-                instance.profile_photo.delete(save=False)
-            instance.profile_photo = profile_photo_upload
+        # --- CORRECTED: This logic now properly handles nested user updates ---
+        user_data_str = self.context['request'].data.get('user')
+        if user_data_str:
+            try:
+                # If user data is sent as a stringified JSON (common with FormData), parse it
+                user_data = json.loads(user_data_str)
+                user_instance = instance.user
+                
+                # Update the user instance with the new data
+                user_instance.first_name = user_data.get('first_name', user_instance.first_name)
+                user_instance.last_name = user_data.get('last_name', user_instance.last_name)
+                user_instance.save()
+            except (json.JSONDecodeError, TypeError):
+                # Handle cases where user data might not be a valid JSON string
+                pass
+            
+        # The PrimaryKeyRelatedField handles preferred_exams and preferred_topics automatically
         
-        preferred_topics_ids = validated_data.pop('preferred_topics_ids', None)
-        
-        # CORRECTED: The 'preferred_exams' field is handled automatically by the PrimaryKeyRelatedField
-        # so we no longer need to manually handle it here.
-        
+        # The super().update() handles all other standard UserProfile fields
+        # like qualifications, place, and the profile_photo (via the `source` attribute).
         instance = super().update(instance, validated_data)
-        
-        if preferred_topics_ids is not None:
-            instance.preferred_topics.set(preferred_topics_ids)
         
         instance.save()
         return instance

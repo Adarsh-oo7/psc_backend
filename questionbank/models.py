@@ -77,7 +77,8 @@ class UserProfile(models.Model):
     preferred_topics = models.ManyToManyField('Topic', blank=True)
     preferred_difficulty = models.CharField(max_length=20, choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')], blank=True)
     institute = models.ForeignKey('institutes.Institute', on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
-    
+    is_content_creator = models.BooleanField(default=False, help_text="Designates this user as a trusted community content creator.")
+
     # --- NEW: Field to store multiple preferred exams ---
     preferred_exams = models.ManyToManyField('Exam', blank=True, related_name='followers')
 

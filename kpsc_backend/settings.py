@@ -25,7 +25,13 @@ SECRET_KEY = "django-insecure-9p3!4(l3f)pjg)jgb=6gge5h+4(u*m3$w85@qaz=&y45z(&t7a
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+DEBUG = True
+
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+    '192.168.1.5', # <-- ADD THIS LINE
+]
 
 
 # Application definition
@@ -41,6 +47,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'questionbank',
     'institutes',
+    'rest_framework_simplejwt',
+    'community',
 
 ]
 
@@ -59,6 +67,8 @@ MIDDLEWARE = [
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
+    "http://localhost:8081",
+    
 ]
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
