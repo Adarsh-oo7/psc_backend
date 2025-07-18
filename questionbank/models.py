@@ -81,6 +81,12 @@ class UserProfile(models.Model):
 
     # --- NEW: Field to store multiple preferred exams ---
     preferred_exams = models.ManyToManyField('Exam', blank=True, related_name='followers')
+    bio = models.TextField(blank=True, help_text="A short description or bio for the user's public profile.")
+    
+    is_content_creator = models.BooleanField(default=False, help_text="Designates this user as a trusted community content creator.")
+    is_owner = models.BooleanField(default=False) # We will keep this for future institute features
+    
+
 
     def __str__(self):
         return self.user.username
@@ -113,3 +119,113 @@ class Report(models.Model):
     question = models.ForeignKey('Question', on_delete=models.CASCADE)
     reason = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+
+from django.db import models
+
+class Questions(models.Model):
+    question_text = models.TextField(verbose_name="Question")
+    option_a = models.CharField(max_length=255, verbose_name="Option A")
+    option_b = models.CharField(max_length=255, verbose_name="Option B")
+    option_c = models.CharField(max_length=255, blank=True, verbose_name="Option C")
+    option_d = models.CharField(max_length=255, blank=True, verbose_name="Option D")
+    correct_answer = models.CharField(
+        max_length=1,
+        choices=[('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D')],
+        verbose_name="Correct Answer"
+    )
+    explanation = models.TextField(blank=True, verbose_name="Explanation")
+
+    def __str__(self):
+        return self.question_text[:70]
+
+class DailyExam(models.Model):
+    date = models.DateField(unique=True)
+    questions = models.ManyToManyField(Questions, blank=True, related_name='daily_exams')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Daily Exam {self.date}"
+    
+
+
+class DailyExamAttempt(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='daily_exam_attempts')
+    daily_exam = models.ForeignKey(DailyExam, on_delete=models.CASCADE, related_name='attempts')
+    score = models.FloatField()
+    time_taken = models.IntegerField(help_text="Time taken in seconds")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        # A user can only attempt a specific daily exam once
+        unique_together = ('user', 'daily_exam')
+        ordering = ['-score', 'time_taken'] # Order by highest score, then fastest time
+
+
+# In questionbank/models.py
+
+class ModelExam(models.Model):
+    name = models.CharField(max_length=255, help_text="e.g., LDC Model Paper 1")
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='model_exams')
+    questions = models.ManyToManyField(Question, help_text="Select exactly 100 questions for this model exam.")
+    duration_minutes = models.PositiveIntegerField(default=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+class ModelExamAttempt(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='model_exam_attempts')
+    model_exam = models.ForeignKey(ModelExam, on_delete=models.CASCADE, related_name='attempts')
+    score = models.FloatField()
+    time_taken = models.IntegerField(help_text="Time taken in seconds")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-score', 'time_taken']
+
+
+
+class PreviousYearPaper(models.Model):
+    title = models.CharField(max_length=255, help_text="e.g., LDC Main Exam 2017")
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='pyq_papers')
+    year = models.PositiveIntegerField()
+    pdf_file = models.FileField(upload_to='pyq_papers/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-year']
+
+    def __str__(self):
+        return self.title
+    
+
+
+class Syllabus(models.Model):
+    exam = models.OneToOneField(Exam, on_delete=models.CASCADE, related_name='syllabus')
+    details = models.TextField(help_text="Detailed syllabus content. Can include HTML for formatting.")
+    pdf_file = models.FileField(upload_to='syllabuses/', null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Syllabus for {self.exam.name}"
+
+from django.utils import timezone
+
+class ExamAnnouncement(models.Model):
+    # REMOVED: exam, notification_date, last_date_to_apply, exam_date, notes
+    # NEW fields below:
+    title = models.CharField(max_length=255, help_text="e.g., EXAMINATION PROGRAMME FOR THE MONTH OF SEPTEMBER 2025",null=True,)
+    pdf_file = models.FileField(upload_to='exam_programmes/', null=True, blank=True)
+    publication_date = models.DateField(default=timezone.now)
+
+    class Meta:
+        # Order by the most recent publication date first
+        ordering = ['-publication_date']
+
+    def __str__(self):
+        return self.title

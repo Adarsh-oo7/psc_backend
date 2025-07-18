@@ -6,22 +6,57 @@ from .models import Post, Like, Comment, PostBookmark
 from .serializers import PostSerializer, CommentSerializer
 from .permissions import IsContentCreator
 
+# In community/views.py
+from .models import Post, Tag # Make sure Tag is imported
+
+
+import logging
+
+logger = logging.getLogger(__name__)
+
 class PostListCreateView(generics.ListCreateAPIView):
-    queryset = Post.objects.all().order_by('-created_at')  # Order by newest first
+    queryset = Post.objects.all().order_by('-created_at')
     serializer_class = PostSerializer
     permission_classes = [IsContentCreator]
 
     def perform_create(self, serializer):
-        content_type = 'TEXT'
-        file = self.request.data.get('file')
-        if file:
-            if file.content_type.startswith('image'):
-                content_type = 'IMAGE'
-            elif file.content_type.startswith('video'):
-                content_type = 'VIDEO'
-            elif file.content_type == 'application/pdf':
-                content_type = 'PDF'
-        serializer.save(author=self.request.user, content_type=content_type)
+        try:
+            # Get the uploaded file
+            file = self.request.FILES.get('file')
+            
+            # Determine content type from file
+            content_type = 'TEXT'
+            if file:
+                if file.content_type.startswith('image/'):
+                    content_type = 'IMAGE'
+                elif file.content_type.startswith('video/'):
+                    content_type = 'VIDEO'
+                elif file.content_type == 'application/pdf':
+                    content_type = 'PDF'
+                else:
+                    logger.warning(f"Unknown file type: {file.content_type}")
+            
+            # Save the post with the file and content_type
+            post = serializer.save(
+                author=self.request.user, 
+                content_type=content_type,
+                file=file  # This is the key line that was missing!
+            )
+            
+            # Handle tags
+            tags_str = self.request.data.get('tags_input', '')
+            if tags_str:
+                tag_names = [tag.strip() for tag in tags_str.split(',') if tag.strip()]
+                for name in tag_names:
+                    tag, created = Tag.objects.get_or_create(name=name.lower())
+                    post.tags.add(tag)
+                    
+            logger.info(f"Post created successfully: {post.id}")
+            
+        except Exception as e:
+            logger.error(f"Error creating post: {str(e)}")
+            raise
+
 
 class PostLikeView(views.APIView):
     permission_classes = [IsAuthenticated]
@@ -84,3 +119,23 @@ class CommentListCreateView(generics.ListCreateAPIView):
         post = get_object_or_404(Post, pk=self.kwargs['pk'])
         response.data['comments_count'] = post.comments.count()
         return response
+    
+
+from rest_framework import generics
+from django.contrib.auth.models import User
+from django.shortcuts import get_object_or_404
+from .models import Post
+from .serializers import PostSerializer
+from rest_framework.permissions import AllowAny
+class UserPostListView(generics.ListAPIView):
+    """
+    Returns a list of all posts created by a specific user.
+    """
+    serializer_class = PostSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        # Look up the user by the username passed in the URL
+        username = self.kwargs['username']
+        user = get_object_or_404(User, username=username)
+        return Post.objects.filter(author=user).order_by('-created_at')

@@ -389,3 +389,229 @@ class MarkMessageAsReadView(views.APIView):
             raise PermissionDenied("You are not a recipient of this message.")
         message.read_by.add(request.user)
         return Response(status=status.HTTP_200_OK)
+
+
+
+# views.py
+from rest_framework.generics import ListAPIView
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.views import View
+from django.http import JsonResponse
+from .models import DailyExam, Questions
+from .serializers import DailyExamSerializer
+import json
+import csv
+from io import StringIO
+from datetime import datetime
+
+
+# This is the public API endpoint for your mobile app
+class DailyExamListView(generics.ListAPIView):
+    """
+    Returns a list of the last 20 daily exam sets for the mobile app.
+    """
+    serializer_class = DailyExamSerializer
+    permission_classes = [AllowAny]
+    queryset = DailyExam.objects.all().order_by('-date')[:20]
+# views.py
+# views.py
+from .models import Questions
+
+class BulkUploadView:
+    def process_questions_text(self, text_data):
+        created_questions = []
+        errors = []
+        lines = text_data.strip().split('\n')
+
+        for line in lines:
+            try:
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) < 6:
+                    errors.append(f"Incomplete line: {line}")
+                    continue
+
+                q = Questions.objects.create(
+                    question_text=parts[0],
+                    option_a=parts[1],
+                    option_b=parts[2],
+                    option_c=parts[3],
+                    option_d=parts[4],
+                    correct_answer=parts[5].upper(),
+                    explanation=parts[6] if len(parts) > 6 else ''
+                )
+                created_questions.append(q)
+
+            except Exception as e:
+                errors.append(f"{line} — {str(e)}")
+
+        return {'created_questions': created_questions, 'errors': errors}
+
+
+
+# In questionbank/views.py
+from .models import DailyExamAttempt
+from .serializers import SubmitDailyExamSerializer, DailyExamAttemptSerializer
+# In questionbank/views.py
+from .models import DailyExamAttempt
+
+class SubmitDailyExamView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        daily_exam = get_object_or_404(DailyExam, pk=pk)
+        
+        if DailyExamAttempt.objects.filter(user=request.user, daily_exam=daily_exam).exists():
+            return Response({'detail': 'You have already attempted this daily exam.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        serializer = SubmitDailyExamSerializer(data=request.data)
+        if serializer.is_valid():
+            answers = serializer.validated_data['answers']
+            time_taken = serializer.validated_data['time_taken']
+            
+            correct_count = 0
+            questions = daily_exam.questions.all()
+            for q in questions:
+                if str(q.id) in answers and answers[str(q.id)] == q.correct_answer:
+                    correct_count += 1
+            
+            score = (correct_count / questions.count()) * 100 if questions.count() > 0 else 0
+
+            DailyExamAttempt.objects.create(
+                user=request.user, daily_exam=daily_exam, score=score, time_taken=time_taken
+            )
+            return Response({
+                'score': score, 'correct_count': correct_count, 'total_questions': questions.count()
+            }, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class DailyExamLeaderboardView(generics.ListAPIView):
+    serializer_class = DailyExamAttemptSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        daily_exam_id = self.kwargs['pk']
+        return DailyExamAttempt.objects.filter(daily_exam_id=daily_exam_id).order_by('-score', 'time_taken')[:50]
+
+
+
+# In questionbank/views.py
+
+# ===============================================================
+# --- NEW: Model Exam Views (Simplified) ---
+# ===============================================================
+
+from .models import ModelExam, ModelExamAttempt
+from .serializers import ModelExamSerializer, ModelExamDetailSerializer, SubmitDailyExamSerializer
+
+
+class ModelExamListView(generics.ListAPIView):
+    """Returns all model exams for a specific main exam."""
+    serializer_class = ModelExamSerializer
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        exam_id = self.kwargs['exam_id']
+        return ModelExam.objects.filter(exam_id=exam_id)
+
+class ModelExamDetailView(generics.RetrieveAPIView):
+    """Returns the details and all questions for a single model exam."""
+    queryset = ModelExam.objects.all()
+    serializer_class = ModelExamDetailSerializer
+    permission_classes = [IsAuthenticated]
+
+# In questionbank/views.py
+
+class SubmitModelExamView(APIView):
+    """
+    Handles submission of a model exam attempt and saves it for progress tracking.
+    This version correctly allows users to retake exams.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk):
+        model_exam = get_object_or_404(ModelExam, pk=pk)
+        
+        # We can reuse the SubmitDailyExamSerializer
+        serializer = SubmitDailyExamSerializer(data=request.data)
+        if serializer.is_valid():
+            answers = serializer.validated_data['answers']
+            time_taken = serializer.validated_data.get('time_taken', 0)
+            
+            correct_count = 0
+            questions = model_exam.questions.all()
+            total_questions = questions.count()
+
+            # --- This loop correctly calculates the score ---
+            for question in questions:
+                question_id_str = str(question.id)
+                if question_id_str in answers and answers[question_id_str] == question.correct_answer:
+                    correct_count += 1
+            
+            score = (correct_count / total_questions) * 100 if total_questions > 0 else 0
+
+            # --- CORRECTED: Always create a new attempt for each submission ---
+            ModelExamAttempt.objects.create(
+                user=request.user, 
+                model_exam=model_exam, 
+                score=score, 
+                time_taken=time_taken
+            )
+            
+            return Response({
+                'score': score, 
+                'correct_count': correct_count, 
+                'total_questions': total_questions,
+            }, status=status.HTTP_200_OK)
+            
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+# In questionbank/views.py
+from .models import PreviousYearPaper
+from .serializers import PreviousYearPaperSerializer
+
+class PYQListView(generics.ListAPIView):
+    serializer_class = PreviousYearPaperSerializer
+    permission_classes = [IsAuthenticated] # Or AllowAny if you want guests to see the list
+
+    def get_queryset(self):
+        # Returns all PYQ papers for a specific main exam
+        exam_id = self.kwargs['exam_id']
+        return PreviousYearPaper.objects.filter(exam_id=exam_id)
+
+
+
+# In questionbank/views.py
+from .models import Syllabus, ExamAnnouncement
+from .serializers import SyllabusSerializer, ExamAnnouncementSerializer
+from django.utils import timezone   
+
+
+class ExamSyllabusListView(generics.ListAPIView):
+    queryset = Syllabus.objects.all()
+    serializer_class = SyllabusSerializer
+    permission_classes = [AllowAny]
+
+
+class ExamCalendarView(generics.ListAPIView):
+    """
+    Returns a list of all exam announcements (PDFs), ordered by date.
+    """
+    queryset = ExamAnnouncement.objects.all().order_by('-publication_date')
+    serializer_class = ExamAnnouncementSerializer
+    permission_classes = [AllowAny]
+
+
+
+class PublicUserProfileView(generics.RetrieveAPIView):
+    """
+    Provides a public view of a user's profile, looked up by username.
+    """
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'user__username'
+    lookup_url_kwarg = 'username'

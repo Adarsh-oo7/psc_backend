@@ -77,7 +77,10 @@ import json
 # ... all other imports ...
 
 class UserProfileSerializer(serializers.ModelSerializer):
+    # This allows reading the nested user details
     user = UserSerializer(read_only=True)
+    
+    # These fields provide read-only, formatted data to the app
     institute = serializers.SerializerMethodField()
     profile_photo = serializers.SerializerMethodField()
     is_owner = serializers.SerializerMethodField()
@@ -86,14 +89,32 @@ class UserProfileSerializer(serializers.ModelSerializer):
     preferred_topics = TopicSerializer(many=True, read_only=True)
     preferred_exams = ExamSerializer(many=True, read_only=True)
 
-    # These fields are for WRITING data from the app to the backend
+    # --- These fields are for WRITING data from the app to the backend ---
+    
+    # This handles the file upload
     profile_photo_upload = serializers.ImageField(source='profile_photo', write_only=True, required=False, allow_null=True)
+    
+    # These handle the many-to-many relationships by accepting a list of IDs
     preferred_topics_ids = serializers.PrimaryKeyRelatedField(
         queryset=Topic.objects.all(), source='preferred_topics', many=True, write_only=True, required=False
     )
     preferred_exams_ids = serializers.PrimaryKeyRelatedField(
         queryset=Exam.objects.all(), source='preferred_exams', many=True, write_only=True, required=False
     )
+
+    class Meta:
+        model = UserProfile
+        # The `fields` list now correctly includes all readable and writable fields
+        fields = [
+            'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload', 
+            'qualifications', 'date_of_birth', 'place', 'preferred_difficulty',
+            'is_owner', 'join_request_status', 'fee_status', 
+            'preferred_topics', 'preferred_topics_ids',
+            'preferred_exams', 'preferred_exams_ids','bio',
+            'is_content_creator'
+        ]
+        # We make 'user' read-only in the Meta to prevent accidental updates via this serializer's main logic
+        read_only_fields = ['user']
 
     class Meta:
         model = UserProfile
@@ -137,7 +158,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
             balance = total_dues - total_paid
             return {'total_fees': total_dues, 'amount_paid': total_paid, 'balance_due': balance}
         return None
-    
+
     def validate_preferred_exams_ids(self, value):
         if len(value) > 3:
             raise serializers.ValidationError("You can select a maximum of 3 preferred exams.")
@@ -145,26 +166,173 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         # --- CORRECTED: This logic now properly handles nested user updates ---
+        
+        # Handle nested User model update (first_name, last_name)
         user_data_str = self.context['request'].data.get('user')
         if user_data_str:
             try:
-                # If user data is sent as a stringified JSON (common with FormData), parse it
                 user_data = json.loads(user_data_str)
                 user_instance = instance.user
-                
-                # Update the user instance with the new data
-                user_instance.first_name = user_data.get('first_name', user_instance.first_name)
-                user_instance.last_name = user_data.get('last_name', user_instance.last_name)
-                user_instance.save()
+                user_serializer = UserSerializer(user_instance, data=user_data, partial=True)
+                if user_serializer.is_valid(raise_exception=True):
+                    user_serializer.save()
             except (json.JSONDecodeError, TypeError):
-                # Handle cases where user data might not be a valid JSON string
+                # This handles cases where the data might not be a valid JSON string
                 pass
             
-        # The PrimaryKeyRelatedField handles preferred_exams and preferred_topics automatically
+        # The PrimaryKeyRelatedField and ImageField (with `source`) handle the updates
+        # for preferred_exams, preferred_topics, and profile_photo automatically.
         
         # The super().update() handles all other standard UserProfile fields
-        # like qualifications, place, and the profile_photo (via the `source` attribute).
+        # like qualifications, place, etc.
         instance = super().update(instance, validated_data)
         
         instance.save()
         return instance
+
+
+
+from rest_framework import serializers
+from .models import Questions, DailyExam
+import json
+import csv
+from io import StringIO
+from django.core.exceptions import ValidationError
+
+class QuestionsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Questions
+        fields = [
+            'id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d',
+            'correct_answer', 'explanation'
+        ]
+
+class DailyExamSerializer(serializers.ModelSerializer):
+    questions = QuestionsSerializer(many=True, read_only=True)
+    class Meta:
+        model = DailyExam
+        fields = ['id', 'date', 'questions']
+
+class TextUploadSerializer(serializers.Serializer):
+    text_data = serializers.CharField(style={'base_template': 'textarea.html'})
+    upload_type = serializers.ChoiceField(choices=[('questions', 'Questions'), ('daily_exam', 'Daily Exam')])
+    format_type = serializers.ChoiceField(
+        choices=[
+            ('csv', 'CSV Format'),
+            ('json', 'JSON Format'),
+            ('simple', 'Simple Format')
+        ],
+        default='simple'
+    )
+
+class BulkUploadSerializer(serializers.Serializer):
+    file = serializers.FileField(required=False)
+    text_data = serializers.CharField(required=False, style={'base_template': 'textarea.html'})
+    upload_type = serializers.ChoiceField(choices=[('questions', 'Questions'), ('daily_exam', 'Daily Exam')])
+    format_type = serializers.ChoiceField(
+        choices=[
+            ('csv', 'CSV Format'),
+            ('json', 'JSON Format'),
+            ('simple', 'Simple Format')
+        ],
+        default='csv'
+    )
+    
+    def validate(self, data):
+        if not data.get('file') and not data.get('text_data'):
+            raise serializers.ValidationError("Either file or text_data must be provided")
+        
+        if data.get('file') and data.get('text_data'):
+            raise serializers.ValidationError("Provide either file or text_data, not both")
+        
+        if data.get('file'):
+            if not data['file'].name.endswith(('.csv', '.xlsx', '.xls')):
+                raise serializers.ValidationError("Only CSV and Excel files are supported")
+        
+        return data
+    
+from .models import DailyExamAttempt
+
+# In questionbank/serializers.py
+
+class DailyExamAttemptSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    class Meta:
+        model = DailyExamAttempt
+        fields = ['id', 'user', 'score', 'time_taken', 'submitted_at']
+
+class SubmitDailyExamSerializer(serializers.Serializer):
+    answers = serializers.JSONField()
+    time_taken = serializers.IntegerField(required=False, default=0)
+
+
+
+# In questionbank/serializers.py
+from .models import ModelExam, ModelExamAttempt
+
+class ModelExamSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ModelExam
+        fields = ['id', 'name', 'exam', 'duration_minutes']
+
+class ModelExamDetailSerializer(serializers.ModelSerializer):
+    questions = QuestionSerializer(many=True, read_only=True)
+    class Meta:
+        model = ModelExam
+        fields = ['id', 'name', 'exam', 'duration_minutes', 'questions']
+
+class ModelExamAttemptSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)
+    class Meta:
+        model = ModelExamAttempt
+        fields = ['id', 'user', 'score', 'time_taken']
+
+
+# In questionbank/serializers.py
+from .models import PreviousYearPaper
+
+class PreviousYearPaperSerializer(serializers.ModelSerializer):
+    pdf_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PreviousYearPaper
+        fields = ['id', 'title', 'year', 'pdf_file_url']
+
+    def get_pdf_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.pdf_file and hasattr(obj.pdf_file, 'url'):
+            return request.build_absolute_uri(obj.pdf_file.url)
+        return None
+
+
+# In questionbank/serializers.py
+# In questionbank/serializers.py
+from .models import Syllabus, ExamAnnouncement
+
+class SyllabusSerializer(serializers.ModelSerializer):
+    exam_name = serializers.CharField(source='exam.name', read_only=True)
+    pdf_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Syllabus # Use the new model name
+        fields = ['id', 'exam', 'exam_name', 'details', 'pdf_file_url']
+
+    def get_pdf_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.pdf_file and hasattr(obj.pdf_file, 'url'):
+            return request.build_absolute_uri(obj.pdf_file.url)
+        return None
+
+
+class ExamAnnouncementSerializer(serializers.ModelSerializer):
+    pdf_file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ExamAnnouncement
+        fields = ['id', 'title', 'publication_date', 'pdf_file_url']
+
+    def get_pdf_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.pdf_file and hasattr(obj.pdf_file, 'url'):
+            return request.build_absolute_uri(obj.pdf_file.url)
+        return None

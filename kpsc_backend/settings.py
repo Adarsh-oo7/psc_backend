@@ -30,7 +30,8 @@ DEBUG = True
 ALLOWED_HOSTS = [
     '127.0.0.1',
     'localhost',
-    '192.168.1.5', # <-- ADD THIS LINE
+    '192.168.1.2',
+    # '192.168.1.5', # <-- ADD THIS LINE
 ]
 
 
@@ -49,6 +50,8 @@ INSTALLED_APPS = [
     'institutes',
     'rest_framework_simplejwt',
     'community',
+    'messaging', # <-- ADD THIS
+    'channels',  # <-- AND THIS
 
 ]
 
@@ -160,3 +163,14 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+
+
+ASGI_APPLICATION = "kpsc_backend.asgi.application"
+
+# In-memory channel layer for development (no Redis needed)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}

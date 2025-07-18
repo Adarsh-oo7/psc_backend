@@ -484,7 +484,7 @@ class UserProfileAdmin(admin.ModelAdmin):
             'fields': ('user', 'institute', 'is_content_creator')
         }),
         ('Personal Details', {
-            'fields': ('profile_photo', 'qualifications', 'date_of_birth', 'place')
+            'fields': ('profile_photo', 'qualifications', 'date_of_birth', 'place','bio')
         }),
         ('User Preferences', {
             'fields': ('preferred_difficulty', 'preferred_topics', 'preferred_exams')
@@ -506,3 +506,176 @@ class UserAnswerAdmin(admin.ModelAdmin):
 # Register the remaining simple models
 admin.site.register(Bookmark)
 admin.site.register(Report)
+
+# admin.py
+from django.contrib import admin
+from django.urls import path
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from .models import Questions,DailyExam
+from .views import BulkUploadView
+
+
+@admin.register(Questions)
+class QuestionsAdmin(admin.ModelAdmin):
+    list_display = ('question_text', 'correct_answer', 'option_a', 'option_b')
+    search_fields = ('question_text',)
+    list_filter = ('correct_answer',)
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('text-upload/', self.text_upload_view, name='questions_text_upload'),
+        ]
+        return custom_urls + urls
+
+    def text_upload_view(self, request):
+        if request.method == 'POST':
+            text_data = request.POST.get('text_data', '').strip()
+
+            if not text_data:
+                messages.error(request, 'Please paste some text.')
+                return self.render_upload_page(request)
+
+            try:
+                bulk_view = BulkUploadView()
+                result = bulk_view.process_questions_text(text_data)
+                success = len(result['created_questions'])
+                failed = len(result['errors'])
+
+                if success:
+                    messages.success(request, f'Successfully uploaded {success} questions.')
+                if failed:
+                    messages.warning(request, f'{failed} lines failed. Errors: {"; ".join(result["errors"][:5])}')
+                return redirect('..')
+
+            except Exception as e:
+                messages.error(request, f'Upload failed: {e}')
+
+        return self.render_upload_page(request)
+
+    def render_upload_page(self, request):
+        return render(request, 'admin/text_upload.html', {
+            'title': 'Upload Questions via Text',
+            'opts': self.model._meta,
+        })
+
+# admin.py
+from django.contrib import admin
+from django.urls import path
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.utils import timezone
+from .models import DailyExam, Questions # CORRECTED: Use the correct model name 'Questions'
+
+@admin.register(DailyExam)
+class DailyExamAdmin(admin.ModelAdmin):
+    list_display = ('date', 'question_count', 'created_at')
+    ordering = ('-date',)
+    filter_horizontal = ('questions',)
+    search_fields = ('date',)
+    date_hierarchy = 'date'
+
+    def question_count(self, obj):
+        return obj.questions.count()
+    question_count.short_description = 'Number of Questions'
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path('bulk-upload/', self.admin_site.admin_view(self.bulk_upload_view), name='dailyexam_bulk_upload'),
+        ]
+        return custom_urls + urls
+
+    def bulk_upload_view(self, request):
+        if request.method == 'POST':
+            text_data = request.POST.get('text_data', '').strip()
+            exam_date_str = request.POST.get('exam_date', '').strip()
+
+            if not text_data or not exam_date_str:
+                self.message_user(request, 'Please provide both a date and question text.', level=messages.ERROR)
+                return redirect('.')
+            
+            try:
+                lines = text_data.strip().split('\n')
+                created_questions = []
+                for line in lines:
+                    parts = [p.strip() for p in line.split('|')]
+                    if len(parts) >= 6:
+                        # CORRECTED: Use the correct model name 'Questions'
+                        question = Questions.objects.create(
+                            question_text=parts[0],
+                            option_a=parts[1],
+                            option_b=parts[2],
+                            option_c=parts[3],
+                            option_d=parts[4],
+                            correct_answer=parts[5].upper(),
+                            explanation=parts[6] if len(parts) > 6 else ''
+                        )
+                        created_questions.append(question)
+                
+                if created_questions:
+                    exam, created = DailyExam.objects.get_or_create(date=exam_date_str)
+                    exam.questions.add(*created_questions)
+                    self.message_user(request, f"Successfully added {len(created_questions)} questions to Daily Exam for {exam.date}.", level=messages.SUCCESS)
+                else:
+                    self.message_user(request, "No valid questions were found in the text.", level=messages.WARNING)
+
+            except Exception as e:
+                self.message_user(request, f'An error occurred: {e}', level=messages.ERROR)
+            
+            return redirect('..')
+
+        context = dict(
+           self.admin_site.each_context(request),
+           title="Bulk Upload for Daily Exam",
+        )
+        return render(request, "admin/daily_exam_bulk_upload.html", context)
+    
+
+
+# In questionbank/admin.py
+from .models import ModelExam,ModelExamAttempt
+
+@admin.register(ModelExam)
+class ModelExamAdmin(admin.ModelAdmin):
+    list_display = ('name', 'exam', 'question_count')
+    list_filter = ('exam',)
+    search_fields = ('name',)
+    filter_horizontal = ('questions',)
+
+    def question_count(self, obj):
+        return obj.questions.count()
+    question_count.short_description = 'Number of Questions'
+
+@admin.register(ModelExamAttempt)
+class ModelExamAttemptAdmin(admin.ModelAdmin):
+    list_display = ('user', 'model_exam', 'score', 'submitted_at')
+    list_filter = ('model_exam__name',)
+    search_fields = ('user__username', 'model_exam__name')
+
+
+
+# In questionbank/admin.py
+from .models import PreviousYearPaper
+
+@admin.register(PreviousYearPaper)
+class PreviousYearPaperAdmin(admin.ModelAdmin):
+    list_display = ('title', 'exam', 'year', 'uploaded_at')
+    list_filter = ('exam', 'year')
+    search_fields = ('title',)
+
+
+# In questionbank/admin.py
+from .models import Syllabus, ExamAnnouncement
+
+@admin.register(Syllabus)
+class SyllabusAdmin(admin.ModelAdmin):
+    list_display = ('exam', 'updated_at')
+    search_fields = ('exam__name',)
+
+@admin.register(ExamAnnouncement)
+class ExamAnnouncementAdmin(admin.ModelAdmin):
+    list_display = ('title', 'publication_date')
+    list_filter = ('publication_date',)
+    search_fields = ('title',)

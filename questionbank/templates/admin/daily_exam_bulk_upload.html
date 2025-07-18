@@ -1,0 +1,25 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<div>
+    <form action="" method="post">
+        {% csrf_token %}
+        <h2>Upload Questions for a Daily Exam</h2>
+        <p>Paste your pipe-delimited questions below. Each line should be one question.</p>
+        <p>Format: `Question|OptionA|OptionB|OptionC|OptionD|CorrectAnswer|Explanation`</p>
+        
+        <div style="margin-top: 20px;">
+            <label for="exam_date">Exam Date:</label><br>
+            <input type="date" id="exam_date" name="exam_date" required>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <label for="text_data">Questions Text:</label><br>
+            <textarea name="text_data" rows="25" style="width: 80%;"></textarea>
+        </div>
+
+        <div style="margin-top: 20px;">
+            <input type="submit" value="Upload Questions">
+        </div>
+    </form>
+</div>
+{% endblock %}

@@ -27,4 +27,35 @@ urlpatterns = [
     path('my-messages/', views.MyMessagesListView.as_view(), name='my-messages-list'),
     path('messages/<int:pk>/mark-as-read/', views.MarkMessageAsReadView.as_view(), name='message-mark-read'),
     path('institute-join-request/', views.CreateJoinRequestView.as_view(), name='create-join-request'),
+
+
+
+    path('daily-exams/', views.DailyExamListView.as_view(), name='daily-exam-list'),
+    path('daily-exams/<int:pk>/submit/', views.SubmitDailyExamView.as_view(), name='submit-daily-exam'),
+    path('daily-exams/<int:pk>/leaderboard/', views.DailyExamLeaderboardView.as_view(), name='daily-exam-leaderboard'),
+
+    # path('bulk-upload/',views.BulkUploadView.as_view(), name='bulk_upload'),
+    # path('text-upload/', views.TextUploadView.as_view(), name='text_upload'),
+
+
+
+    # --- Model Exam URLs ---URLs ...
+    path('exams/<int:exam_id>/model-exams/', views.ModelExamListView.as_view(), name='model-exam-list'),
+    path('model-exams/<int:pk>/', views.ModelExamDetailView.as_view(), name='model-exam-detail'),
+    path('model-exams/<int:pk>/submit/', views.SubmitModelExamView.as_view(), name='submit-model-exam'),
+
+
+    path('exams/<int:exam_id>/pyq/', views.PYQListView.as_view(), name='pyq-list'),
+
+
+    path('exam-calendar/', views.ExamCalendarView.as_view(), name='exam-calendar'),
+
+
+
+    path('exam-calendar/', views.ExamCalendarView.as_view(), name='exam-calendar'),
+    path('syllabuses/', views.ExamSyllabusListView.as_view(), name='syllabus-list'),
+
+    path('profiles/<str:username>/', views.PublicUserProfileView.as_view(), name='public-user-profile'),
+
+
 ]

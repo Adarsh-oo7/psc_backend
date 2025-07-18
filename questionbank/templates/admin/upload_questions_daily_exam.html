@@ -1,0 +1,20 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<h1>{{ title }}</h1>
+
+<form method="post">{% csrf_token %}
+  <p><strong>Date of Daily Exam (YYYY-MM-DD):</strong></p>
+  <input type="text" name="exam_date" required placeholder="2025-07-10" style="width: 200px;"><br><br>
+
+  <p><strong>Paste Questions (one per line):</strong><br>
+  Format: Question | A | B | C | D | Correct | Explanation</p>
+
+  <textarea name="text_data" rows="15" cols="120" placeholder="Example: What is Python? | Language | Snake | Tool | Library | A | Python is a programming language."></textarea>
+  <br><br>
+
+  <input type="submit" value="Upload Questions" class="default">
+</form>
+
+<br>
+<a href="..">← Back to Daily Exams</a>
+{% endblock %}
