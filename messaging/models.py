@@ -9,9 +9,13 @@ class Group(models.Model):
     """
     Represents a study group created by a Community User.
     """
-    name = models.CharField(max_length=255)
+    name = models.CharField(max_length=100, unique=True) # Ensure group names are unique
+    description = models.TextField(blank=True)
     creator = models.ForeignKey(User, on_delete=models.CASCADE, related_name='created_groups')
-    members = models.ManyToManyField(User, related_name='chat_groups', blank=True)
+    
+    # CORRECTED: Use 'joined_groups' to match the API view
+    members = models.ManyToManyField(User, related_name='joined_groups', blank=True)
+    
     is_premium = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -22,13 +26,17 @@ class GroupJoinRequest(models.Model):
     """
     Tracks a Normal User's request to join a specific group.
     """
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    ]
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='group_join_requests')
     group = models.ForeignKey(Group, on_delete=models.CASCADE, related_name='join_requests')
-    status = models.CharField(max_length=10, choices=[('pending', 'Pending'), ('approved', 'Approved'), ('rejected', 'Rejected')], default='pending')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='pending')
     requested_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        # A user can only have one pending request for a specific group
         unique_together = ('user', 'group')
 
 # ===============================================================
