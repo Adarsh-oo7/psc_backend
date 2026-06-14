@@ -12,6 +12,13 @@ urlpatterns = [
     path('topics/', views.TopicListView.as_view(), name='topic-list'),
     path('questions/', views.QuestionListView.as_view(), name='question-list'),
     path('questions/daily/', views.DailyQuestionView.as_view(), name='daily-question'),
+    
+    # --- Public SEO URLs ---
+    path('public/questions/<slug:slug>/', views.PublicQuestionDetailView.as_view(), name='public-question-detail'),
+    path('public/topics/<slug:slug>/', views.PublicTopicDetailView.as_view(), name='public-topic-detail'),
+    path('public/exams/<slug:slug>/', views.PublicExamDetailView.as_view(), name='public-exam-detail'),
+    path('public/current-affairs/', views.PublicCurrentAffairsListView.as_view(), name='public-current-affairs-list'),
+    path('public/current-affairs/<slug:slug>/', views.PublicCurrentAffairsDetailView.as_view(), name='public-current-affairs-detail'),
 
     # --- NEW: URLs for the advanced Mock Exam mode ---
     path('generate-mock-exam/<int:exam_id>/', views.GenerateMockExamView.as_view(), name='generate-mock-exam'),
@@ -22,6 +29,9 @@ urlpatterns = [
     path('my-progress-dashboard/', views.MyProgressDashboardView.as_view(), name='my-progress-dashboard'),
     path('bookmarks/', views.BookmarkListCreateView.as_view(), name='bookmark-list-create'),
     path('reports/', views.ReportListCreateView.as_view(), name='report-list-create'),
+    path('leaderboard/', views.LeaderboardView.as_view(), name='leaderboard'),
+    path('wrong-answers/', views.WrongAnswersView.as_view(), name='wrong-answers'),
+    path('goals/', views.WeeklyGoalsView.as_view(), name='weekly-goals'),
     
     # --- Student-specific URLs ---
     path('my-messages/', views.MyMessagesListView.as_view(), name='my-messages-list'),
@@ -52,10 +62,11 @@ urlpatterns = [
 
 
 
-    path('exam-calendar/', views.ExamCalendarView.as_view(), name='exam-calendar'),
     path('syllabuses/', views.ExamSyllabusListView.as_view(), name='syllabus-list'),
-
     path('profiles/<str:username>/', views.PublicUserProfileView.as_view(), name='public-user-profile'),
 
-
+    # --- Gamification and Study Feed Routes ---
+    path('study-feed/', views.StudyFeedView.as_view(), name='study-feed'),
+    path('study-feed/view/', views.RecordCardView.as_view(), name='study-feed-view'),
+    path('questions/<int:pk>/explanation/', views.QuestionExplanationView.as_view(), name='question-explanation'),
 ]

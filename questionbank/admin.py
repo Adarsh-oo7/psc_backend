@@ -679,3 +679,24 @@ class ExamAnnouncementAdmin(admin.ModelAdmin):
     list_display = ('title', 'publication_date')
     list_filter = ('publication_date',)
     search_fields = ('title',)
+
+
+from .models import StudyFeedCard, UserFeedView, AIExplanationCache
+
+@admin.register(StudyFeedCard)
+class StudyFeedCardAdmin(admin.ModelAdmin):
+    list_display = ('id', 'card_type', 'title', 'created_at')
+    list_filter = ('card_type',)
+    search_fields = ('title',)
+
+@admin.register(UserFeedView)
+class UserFeedViewAdmin(admin.ModelAdmin):
+    list_display = ('user', 'card', 'viewed_date')
+    list_filter = ('viewed_date',)
+    search_fields = ('user__username',)
+
+@admin.register(AIExplanationCache)
+class AIExplanationCacheAdmin(admin.ModelAdmin):
+    list_display = ('question', 'language', 'created_at')
+    list_filter = ('language',)
+    search_fields = ('question__text',)

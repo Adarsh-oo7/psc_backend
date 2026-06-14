@@ -182,11 +182,33 @@ class SubmitAnswerView(generics.CreateAPIView):
     """Saves a user's single answer during a simple practice quiz."""
     serializer_class = UserAnswerSerializer
     permission_classes = [IsAuthenticated]
-    def perform_create(self, serializer):
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        
         question = serializer.validated_data['question']
         selected_option = serializer.validated_data['selected_option']
         is_correct = (selected_option == question.correct_answer)
-        serializer.save(user=self.request.user, is_correct=is_correct)
+        
+        serializer.save(user=request.user, is_correct=is_correct)
+        
+        # Award XP and update streak
+        from questionbank.gamification import award_xp, update_streak
+        xp_earned = 10 if is_correct else 2
+        _, level_up, new_level = award_xp(request.user, xp_earned)
+        current_streak, longest_streak, freeze_used = update_streak(request.user)
+        
+        response_data = serializer.data
+        response_data['gamification'] = {
+            'xp_earned': xp_earned,
+            'level_up': level_up,
+            'new_level': new_level,
+            'current_streak': current_streak,
+            'longest_streak': longest_streak,
+            'freeze_used': freeze_used
+        }
+        return Response(response_data, status=status.HTTP_201_CREATED)
 
 
 # In questionbank/views.py
@@ -232,6 +254,12 @@ class SubmitExamView(views.APIView):
         unanswered_count = len(all_question_ids) - total_answered
         final_score = (correct_count * 1) - (wrong_count * 0.33)
 
+        # Award XP and update streak
+        from questionbank.gamification import award_xp, update_streak
+        xp_earned = (correct_count * 10) + (wrong_count * 2) + 50
+        _, level_up, new_level = award_xp(request.user, xp_earned)
+        current_streak, longest_streak, freeze_used = update_streak(request.user)
+
         response_data = {
             'results': {
                 'score': round(final_score, 2),
@@ -240,7 +268,15 @@ class SubmitExamView(views.APIView):
                 'wrong': wrong_count,
                 'unanswered': unanswered_count,
             },
-            'questions': QuestionSerializer(questions, many=True).data
+            'questions': QuestionSerializer(questions, many=True).data,
+            'gamification': {
+                'xp_earned': xp_earned,
+                'level_up': level_up,
+                'new_level': new_level,
+                'current_streak': current_streak,
+                'longest_streak': longest_streak,
+                'freeze_used': freeze_used
+            }
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
@@ -277,14 +313,122 @@ class MyProgressDashboardView(views.APIView):
         if mode == 'focus':
             focus_exams = profile.preferred_exams.all()
             if not focus_exams.exists():
-                return Response({"message": "Please set one or more focus exams in your profile to see a personalized report."})
+                return Response({
+                    'report_title': report_title,
+                    'overall_stats': {'total_answered': 0, 'correct': 0, 'wrong': 0, 'accuracy': 0, 'net_marks': 0},
+                    'topic_performance': [],
+                    'exam_performance': [],
+                    'strongest_topics': [],
+                    'weakest_topics': [],
+                    'answer_history': [],
+                    'heatmap_data': [],
+                    'badges': [],
+                    'no_data': True,
+                    'message': "Please set one or more focus exams in your profile to see a personalized report."
+                })
             
             report_title = f"Focus Report: {', '.join([exam.name for exam in focus_exams])}"
             # Filter answers to only include questions from the user's focus exams
             answers_to_process = all_answers.filter(question__exams__in=focus_exams)
         
+        # --- Common badges helper ---
+        import datetime
+        from django.utils import timezone
+        
+        total_answered = answers_to_process.count()
+        correct_count = answers_to_process.filter(is_correct=True).count()
+        wrong_count = total_answered - correct_count
+        net_marks = (correct_count * 1) - (wrong_count * 0.33)
+        accuracy = (correct_count * 100.0 / total_answered) if total_answered > 0 else 0
+        
+        # Generate badges
+        badges = [
+            {
+                'id': 'streak_3',
+                'name': '3-Day Starter',
+                'description': 'Maintained a 3-day study streak',
+                'category': 'streak',
+                'earned': profile.longest_streak >= 3,
+                'icon': '🔥'
+            },
+            {
+                'id': 'streak_7',
+                'name': '7-Day Consistent',
+                'description': 'Maintained a 7-day study streak',
+                'category': 'streak',
+                'earned': profile.longest_streak >= 7,
+                'icon': '⚡'
+            },
+            {
+                'id': 'streak_14',
+                'name': '14-Day Habit',
+                'description': 'Maintained a 14-day study streak',
+                'category': 'streak',
+                'earned': profile.longest_streak >= 14,
+                'icon': '👑'
+            },
+            {
+                'id': 'streak_30',
+                'name': '30-Day Champion',
+                'description': 'Maintained a 30-day study streak',
+                'category': 'streak',
+                'earned': profile.longest_streak >= 30,
+                'icon': '🏆'
+            },
+            {
+                'id': 'accuracy_perfect',
+                'name': 'First Perfect Quiz',
+                'description': 'Answered all questions correctly in a session',
+                'category': 'accuracy',
+                'earned': accuracy >= 100.0 and total_answered >= 5,
+                'icon': '🎯'
+            },
+            {
+                'id': 'volume_100',
+                'name': '100 Questions',
+                'description': 'Answered 100 questions in total',
+                'category': 'volume',
+                'earned': total_answered >= 100,
+                'icon': '📚'
+            },
+            {
+                'id': 'volume_500',
+                'name': '500 Questions',
+                'description': 'Answered 500 questions in total',
+                'category': 'volume',
+                'earned': total_answered >= 500,
+                'icon': '💎'
+            },
+            {
+                'id': 'volume_1000',
+                'name': '1,000 Questions',
+                'description': 'Answered 1,000 questions in total',
+                'category': 'volume',
+                'earned': total_answered >= 1000,
+                'icon': '🌟'
+            }
+        ]
+
         if not answers_to_process.exists():
-            return Response({"message": f"No progress data available yet for '{report_title}'. Start taking quizzes!"})
+            return Response({
+                'report_title': report_title,
+                'overall_stats': {
+                    'total_answered': 0,
+                    'correct': 0,
+                    'wrong': 0,
+                    'accuracy': 0,
+                    'net_marks': 0
+                },
+                'topic_performance': [],
+                'exam_performance': [],
+                'strongest_topics': [],
+                'weakest_topics': [],
+                'answer_history': [],
+                'heatmap_data': [],
+                'badges': badges,
+                'no_data': True,
+                'message': f"No progress data available yet for '{report_title}'. Start taking quizzes!"
+            })
             
         # --- 1. Calculate Performance by Topic ---
         topic_performance = answers_to_process.values(
@@ -308,18 +452,28 @@ class MyProgressDashboardView(views.APIView):
         ).annotate(
             accuracy=Cast('correct', FloatField()) * 100.0 / F('total')
         )
-
-        # --- 3. Calculate Overall Stats ---
-        total_answered = answers_to_process.count()
-        correct_count = answers_to_process.filter(is_correct=True).count()
-        wrong_count = total_answered - correct_count
-        net_marks = (correct_count * 1) - (wrong_count * 0.33)
-        accuracy = (correct_count * 100.0 / total_answered) if total_answered > 0 else 0
         
         # --- 4. Get Recent Answer History ---
         recent_answers = answers_to_process.order_by('-answered_at')[:50]
 
-        # --- 5. Assemble the final data object for the API response ---
+        # --- 5. Generate Heatmap data for last 30 days ---
+        today = timezone.now().date()
+        thirty_days_ago = today - datetime.timedelta(days=30)
+        daily_activity_qs = UserAnswer.objects.filter(
+            user=user, 
+            answered_at__date__gte=thirty_days_ago
+        ).values('answered_at__date').annotate(count=Count('id')).order_by('answered_at__date')
+        
+        heatmap_dict = { (thirty_days_ago + datetime.timedelta(days=i)): 0 for i in range(31) }
+        for entry in daily_activity_qs:
+            heatmap_dict[entry['answered_at__date']] = entry['count']
+            
+        heatmap_data = [
+            {'date': dt.strftime('%Y-%m-%d'), 'count': count}
+            for dt, count in sorted(heatmap_dict.items())
+        ]
+
+        # --- 6. Assemble the final data object for the API response ---
         data = {
             'report_title': report_title,
             'overall_stats': {
@@ -333,7 +487,9 @@ class MyProgressDashboardView(views.APIView):
             'exam_performance': list(exam_performance.order_by('-accuracy')),
             'strongest_topics': list(topic_performance.order_by('-accuracy')[:3]),
             'weakest_topics': list(topic_performance.filter(wrong__gt=0).order_by('-marks_lost')[:3]),
-            'answer_history': DetailedUserAnswerSerializer(recent_answers, many=True).data
+            'answer_history': DetailedUserAnswerSerializer(recent_answers, many=True).data,
+            'heatmap_data': heatmap_data,
+            'badges': badges
         }
         return Response(data)
 # ===================================================================
@@ -483,8 +639,25 @@ class SubmitDailyExamView(APIView):
             DailyExamAttempt.objects.create(
                 user=request.user, daily_exam=daily_exam, score=score, time_taken=time_taken
             )
+
+            # Award XP and update streak
+            from questionbank.gamification import award_xp, update_streak
+            xp_earned = (correct_count * 10) + 50
+            _, level_up, new_level = award_xp(request.user, xp_earned)
+            current_streak, longest_streak, freeze_used = update_streak(request.user)
+
             return Response({
-                'score': score, 'correct_count': correct_count, 'total_questions': questions.count()
+                'score': score, 
+                'correct_count': correct_count, 
+                'total_questions': questions.count(),
+                'gamification': {
+                    'xp_earned': xp_earned,
+                    'level_up': level_up,
+                    'new_level': new_level,
+                    'current_streak': current_streak,
+                    'longest_streak': longest_streak,
+                    'freeze_used': freeze_used
+                }
             }, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -559,11 +732,25 @@ class SubmitModelExamView(APIView):
                 score=score, 
                 time_taken=time_taken
             )
+
+            # Award XP and update streak
+            from questionbank.gamification import award_xp, update_streak
+            xp_earned = (correct_count * 10) + 50
+            _, level_up, new_level = award_xp(request.user, xp_earned)
+            current_streak, longest_streak, freeze_used = update_streak(request.user)
             
             return Response({
                 'score': score, 
                 'correct_count': correct_count, 
                 'total_questions': total_questions,
+                'gamification': {
+                    'xp_earned': xp_earned,
+                    'level_up': level_up,
+                    'new_level': new_level,
+                    'current_streak': current_streak,
+                    'longest_streak': longest_streak,
+                    'freeze_used': freeze_used
+                }
             }, status=status.HTTP_200_OK)
             
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -615,3 +802,413 @@ class PublicUserProfileView(generics.RetrieveAPIView):
     permission_classes = [AllowAny]
     lookup_field = 'user__username'
     lookup_url_kwarg = 'username'
+
+
+from .models import CurrentAffairs
+from .serializers import CurrentAffairsSerializer
+
+class PublicQuestionDetailView(generics.RetrieveAPIView):
+    """
+    Public SEO endpoint to fetch a single question by its unique slug.
+    """
+    queryset = Question.objects.all()
+    serializer_class = QuestionSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'slug'
+
+class PublicTopicDetailView(generics.RetrieveAPIView):
+    """
+    Public SEO endpoint to fetch a single topic by its slug.
+    """
+    queryset = Topic.objects.all()
+    serializer_class = TopicSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'slug'
+
+class PublicExamDetailView(generics.RetrieveAPIView):
+    """
+    Public SEO endpoint to fetch a single exam by its slug.
+    """
+    queryset = Exam.objects.all()
+    serializer_class = ExamSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'slug'
+
+class PublicCurrentAffairsListView(generics.ListAPIView):
+    """
+    Public SEO endpoint to list recent current affairs.
+    """
+    queryset = CurrentAffairs.objects.all()
+    serializer_class = CurrentAffairsSerializer
+    permission_classes = [AllowAny]
+
+class PublicCurrentAffairsDetailView(generics.RetrieveAPIView):
+    """
+    Public SEO endpoint to fetch a single current affair entry by slug.
+    """
+    queryset = CurrentAffairs.objects.all()
+    serializer_class = CurrentAffairsSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'slug'
+
+
+def seed_feed_cards():
+    # If StudyFeedCard is empty, seed a few cards using questions and current affairs
+    import random
+    from questionbank.models import Question, CurrentAffairs, StudyFeedCard
+    
+    # 1. Convert some Questions into cards
+    questions = Question.objects.all().order_by('?')[:10]
+    for q in questions:
+        content = {
+            'question_id': q.id,
+            'question_text': q.text,
+            'options': q.options,
+            'correct_answer': q.correct_answer,
+            'explanation': q.explanation
+        }
+        StudyFeedCard.objects.get_or_create(
+            card_type='question',
+            title=f"Question on {q.topic.name if q.topic else 'General'}",
+            content_data=content,
+            psc_likelihood_tag='🔥'
+        )
+        
+    # 2. Convert some Current Affairs into cards
+    ca_items = CurrentAffairs.objects.all().order_by('?')[:5]
+    for ca in ca_items:
+        content = {
+            'ca_id': ca.id,
+            'content': ca.content,
+            'category': ca.category,
+            'publication_date': ca.publication_date.isoformat() if ca.publication_date else None,
+            'ai_summary': ca.ai_summary
+        }
+        StudyFeedCard.objects.get_or_create(
+            card_type='current_affairs',
+            title=ca.title,
+            content_data=content,
+            psc_likelihood_tag='💡'
+        )
+
+    # 3. Add some general fun facts for PSC
+    facts = [
+        ("Largest District in Kerala", "Palakkad is the largest district in Kerala by area.", "💡"),
+        ("Smallest District in Kerala", "Alappuzha is the smallest district in Kerala by area.", "💡"),
+        ("Most Populous District in Kerala", "Malappuram is the most populous district in Kerala.", "🔥"),
+        ("Least Populous District in Kerala", "Wayanad is the least populous district in Kerala.", "💡"),
+        ("Longest River in Kerala", "Periyar is the longest river in Kerala with a length of 244 km.", "🔥"),
+    ]
+    for title, text, tag in facts:
+        StudyFeedCard.objects.get_or_create(
+            card_type='fact',
+            title=title,
+            content_data={'fact_text': text},
+            psc_likelihood_tag=tag
+        )
+
+from subscriptions.utils import get_user_entitlement
+from questionbank.models import StudyFeedCard, UserFeedView
+from questionbank.serializers import StudyFeedCardSerializer
+
+class StudyFeedView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        # 1. Determine the user's daily feed limit
+        limit = get_user_entitlement(request.user, 'feed_limit', 15)
+        
+        # 2. Count views today
+        today = timezone.now().date()
+        today_views = UserFeedView.objects.filter(user=request.user, viewed_date=today).count()
+        
+        if today_views >= limit:
+            return Response({
+                'limit_exceeded': True,
+                'message': f"You have reached your daily feed limit of {limit} cards. Upgrade your plan to read unlimited cards!",
+                'views_today': today_views,
+                'limit': limit,
+                'cards': []
+            }, status=status.HTTP_200_OK)
+            
+        # 3. Auto-seed if cards are low
+        if StudyFeedCard.objects.count() < 10:
+            try:
+                seed_feed_cards()
+            except Exception:
+                pass
+                
+        # 4. Get available cards (exclude what they saw today)
+        viewed_ids = UserFeedView.objects.filter(user=request.user, viewed_date=today).values_list('card_id', flat=True)
+        available_cards = list(StudyFeedCard.objects.exclude(id__in=viewed_ids).order_by('?')[:10])
+        
+        # If no more cards in DB, we can re-use cards
+        if not available_cards:
+            available_cards = list(StudyFeedCard.objects.order_by('?')[:10])
+            
+        # 5. Inject Quiz Card every 5 cards
+        final_cards = []
+        for i, card in enumerate(available_cards):
+            final_cards.append(StudyFeedCardSerializer(card).data)
+            if (i + 1) % 5 == 0:
+                random_q = Question.objects.all().order_by('?').first()
+                if random_q:
+                    final_cards.append({
+                        'id': f"quiz-injected-{random_q.id}",
+                        'card_type': 'question',
+                        'title': "Quick Knowledge Check!",
+                        'content_data': {
+                            'question_id': random_q.id,
+                            'question_text': random_q.text,
+                            'options': random_q.options,
+                            'correct_answer': random_q.correct_answer,
+                            'explanation': random_q.explanation
+                        },
+                        'psc_likelihood_tag': '🔥'
+                    })
+                    
+        return Response({
+            'limit_exceeded': False,
+            'views_today': today_views,
+            'limit': limit,
+            'cards': final_cards
+        })
+
+class RecordCardView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        card_id = request.data.get('card_id')
+        if not card_id:
+            return Response({'error': 'card_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        if isinstance(card_id, str) and card_id.startswith('quiz-injected-'):
+            return Response({'success': True})
+            
+        try:
+            card = StudyFeedCard.objects.get(pk=card_id)
+        except StudyFeedCard.DoesNotExist:
+            return Response({'error': 'Card does not exist'}, status=status.HTTP_404_NOT_FOUND)
+            
+        today = timezone.now().date()
+        limit = get_user_entitlement(request.user, 'feed_limit', 15)
+        today_views = UserFeedView.objects.filter(user=request.user, viewed_date=today).count()
+        
+        if today_views >= limit:
+            return Response({
+                'limit_exceeded': True,
+                'message': "Daily feed limit reached."
+            }, status=status.HTTP_403_FORBIDDEN)
+            
+        UserFeedView.objects.get_or_create(user=request.user, card=card, viewed_date=today)
+        new_views_count = UserFeedView.objects.filter(user=request.user, viewed_date=today).count()
+        
+        return Response({
+            'success': True,
+            'views_today': new_views_count,
+            'limit': limit
+        })
+
+class QuestionExplanationView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        question = get_object_or_404(Question, pk=pk)
+        lang = request.query_params.get('lang', 'en')
+        if lang not in ('en', 'ml'):
+            lang = 'en'
+            
+        from questionbank.ai_adapter import get_ai_explanation
+        explanation = get_ai_explanation(question, lang)
+        
+        return Response({
+            'question_id': question.id,
+            'language': lang,
+            'explanation': explanation
+        })
+
+
+class LeaderboardView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        
+        # 1. All Kerala Leaderboard
+        all_kerala_profiles = UserProfile.objects.select_related('user').order_by('-total_xp', 'id')
+        all_kerala = []
+        user_position_all = None
+        for index, p in enumerate(all_kerala_profiles):
+            data = {
+                'rank': index + 1,
+                'username': p.user.username,
+                'avatar': p.profile_photo.url if p.profile_photo else None,
+                'place': p.place or "Kerala",
+                'xp': p.total_xp,
+                'streak': p.current_streak,
+                'level': p.level
+            }
+            all_kerala.append(data)
+            if p.user == user:
+                user_position_all = data
+                user_position_all['places_gained'] = "+3"
+
+        # Limit to top 50, but user position needs to be calculated from full list
+        all_kerala_limited = all_kerala[:50]
+
+        # 2. District Leaderboard
+        district = profile.place
+        district_profiles = []
+        user_position_district = None
+        if district:
+            dist_profiles = UserProfile.objects.filter(place__iexact=district).select_related('user').order_by('-total_xp', 'id')
+            for index, p in enumerate(dist_profiles):
+                data = {
+                    'rank': index + 1,
+                    'username': p.user.username,
+                    'avatar': p.profile_photo.url if p.profile_photo else None,
+                    'place': p.place,
+                    'xp': p.total_xp,
+                    'streak': p.current_streak,
+                    'level': p.level
+                }
+                district_profiles.append(data)
+                if p.user == user:
+                    user_position_district = data
+                    user_position_district['places_gained'] = "+2"
+        else:
+            # Fallback if no district set
+            district_profiles = all_kerala_limited
+            user_position_district = user_position_all
+
+        district_limited = district_profiles[:50]
+
+        # 3. Batch/Institute Leaderboard
+        batch_profiles = []
+        user_position_batch = None
+        if profile.institute:
+            inst_profiles = UserProfile.objects.filter(institute=profile.institute).select_related('user').order_by('-total_xp', 'id')
+            for index, p in enumerate(inst_profiles):
+                data = {
+                    'rank': index + 1,
+                    'username': p.user.username,
+                    'avatar': p.profile_photo.url if p.profile_photo else None,
+                    'place': p.place or "Kerala",
+                    'xp': p.total_xp,
+                    'streak': p.current_streak,
+                    'level': p.level
+                }
+                batch_profiles.append(data)
+                if p.user == user:
+                    user_position_batch = data
+                    user_position_batch['places_gained'] = "+1"
+        else:
+            # Fallback if no institute
+            batch_profiles = all_kerala_limited
+            user_position_batch = user_position_all
+
+        batch_limited = batch_profiles[:50]
+
+        return Response({
+            'all_kerala': all_kerala_limited,
+            'district': district_limited,
+            'batch': batch_limited,
+            'user_position': user_position_all or {
+                'rank': 0, 'username': user.username, 'avatar': None, 'place': '', 'xp': profile.total_xp, 'streak': profile.current_streak, 'level': profile.level, 'places_gained': "0"
+            },
+            'user_position_district': user_position_district,
+            'user_position_batch': user_position_batch,
+        })
+
+
+class WrongAnswersView(generics.ListAPIView):
+    serializer_class = DetailedUserAnswerSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return UserAnswer.objects.filter(user=self.request.user, is_correct=False).select_related('question__topic').order_by('-answered_at')
+
+
+class WeeklyGoalsView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        
+        # Calculate weekly stats: Monday 00:00 to now
+        import datetime
+        from django.utils import timezone
+        
+        now = timezone.now()
+        start_of_week = now - datetime.timedelta(days=now.weekday())
+        start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+        
+        # 1. Answer 50 questions
+        questions_answered = UserAnswer.objects.filter(user=user, answered_at__gte=start_of_week).count()
+        
+        # 2. Complete 2 mock tests
+        mock_tests_completed = ModelExamAttempt.objects.filter(user=user, submitted_at__gte=start_of_week).count()
+        
+        # 3. Read 10 current affairs
+        ca_read = UserFeedView.objects.filter(user=user, card__card_type='current_affairs', viewed_date__gte=start_of_week.date()).count()
+        
+        # 4. Review wrong answers
+        wrong_count = UserAnswer.objects.filter(user=user, is_correct=False).count()
+        # count how many wrong answers corrected/answered correct this week
+        wrong_reviewed = UserAnswer.objects.filter(user=user, answered_at__gte=start_of_week, is_correct=True, question__user_answers__user=user, question__user_answers__is_correct=False).distinct().count()
+        
+        # 5. Maintain streak
+        streak = profile.current_streak
+        
+        missions = [
+            {
+                'id': 'questions_50',
+                'text': 'Answer 50 questions',
+                'progress': min(questions_answered, 50),
+                'target': 50,
+                'xp_reward': 100,
+                'completed': questions_answered >= 50
+            },
+            {
+                'id': 'mock_tests_2',
+                'text': 'Complete 2 mock tests',
+                'progress': min(mock_tests_completed, 2),
+                'target': 2,
+                'xp_reward': 150,
+                'completed': mock_tests_completed >= 2
+            },
+            {
+                'id': 'current_affairs_10',
+                'text': 'Read 10 current affairs',
+                'progress': min(ca_read, 10),
+                'target': 10,
+                'xp_reward': 75,
+                'completed': ca_read >= 10
+            },
+            {
+                'id': 'review_wrong',
+                'text': 'Review wrong answers (Answer 5 previously wrong)',
+                'progress': min(wrong_reviewed, 5) if wrong_count > 0 else 5,
+                'target': 5,
+                'xp_reward': 50,
+                'completed': wrong_reviewed >= 5 if wrong_count > 0 else True
+            },
+            {
+                'id': 'streak_7',
+                'text': 'Maintain 7-day streak',
+                'progress': min(streak, 7),
+                'target': 7,
+                'xp_reward': 200,
+                'completed': streak >= 7
+            }
+        ]
+        
+        return Response({
+            'missions': missions,
+            'preferred_exams': [exam.name for exam in profile.preferred_exams.all()],
+            'place': profile.place,
+            'xp': profile.total_xp
+        })
+

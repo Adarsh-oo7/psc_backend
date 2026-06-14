@@ -11,28 +11,30 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+import environ
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
+env = environ.Env(
+    DEBUG=(bool, False)
+)
+# Read .env file
+environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-9p3!4(l3f)pjg)jgb=6gge5h+4(u*m3$w85@qaz=&y45z(&t7a"
+SECRET_KEY = env('SECRET_KEY', default='django-insecure-9p3!4(l3f)pjg)jgb=6gge5h+4(u*m3$w85@qaz=&y45z(&t7a')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = env('DEBUG', default=True)
 
-DEBUG = True
-
-ALLOWED_HOSTS = [
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
     '127.0.0.1',
     'localhost',
     '192.168.1.2',
-    # '192.168.1.5', # <-- ADD THIS LINE
-]
+    '192.168.1.5',
+])
 
 
 # Application definition
@@ -50,9 +52,9 @@ INSTALLED_APPS = [
     'institutes',
     'rest_framework_simplejwt',
     'community',
-    'messaging', # <-- ADD THIS
-    'channels',  # <-- AND THIS
-
+    'messaging',
+    'channels',
+    'subscriptions',
 ]
 
 MIDDLEWARE = [
@@ -62,17 +64,17 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'institutes.middleware.InstituteMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 
-CORS_ALLOWED_ORIGINS = [
+CORS_ALLOWED_ORIGINS = env.list('CORS_ALLOWED_ORIGINS', default=[
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:8081",
-    
-]
+])
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -111,10 +113,7 @@ WSGI_APPLICATION = "kpsc_backend.wsgi.application"
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
 
 DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    }
+    "default": env.db('DATABASE_URL', default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
 }
 import os
 

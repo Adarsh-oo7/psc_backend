@@ -6,16 +6,29 @@ from decimal import Decimal
 
 
 class Institute(models.Model):
-    # ... your Institute model remains the same ...
     owner = models.OneToOneField(User, on_delete=models.CASCADE, related_name='owned_institute')
     name = models.CharField(max_length=255, unique=True)
+    slug = models.SlugField(unique=True, null=True, blank=True)
+    subdomain_active = models.BooleanField(default=True)
     logo = models.ImageField(upload_to='institute_logos/', null=True, blank=True)
     contact_email = models.EmailField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+    
+    # White-label details
+    tagline = models.CharField(max_length=255, blank=True)
+    primary_color = models.CharField(max_length=7, default='#1976d2') # HEX color
+    accent_color = models.CharField(max_length=7, default='#ff9800')
+    custom_domain = models.CharField(max_length=255, blank=True, null=True, unique=True)
+    address = models.TextField(blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    website = models.URLField(blank=True)
+    established_year = models.PositiveIntegerField(null=True, blank=True)
+    
     login_bg_image = models.ImageField(upload_to='custom_login/', null=True, blank=True)
     login_image_1 = models.ImageField(upload_to='custom_login/', null=True, blank=True)
     login_image_2 = models.ImageField(upload_to='custom_login/', null=True, blank=True)
     login_image_3 = models.ImageField(upload_to='custom_login/', null=True, blank=True)
+
     def __str__(self):
         return self.name
 
@@ -38,6 +51,8 @@ class Message(models.Model):
     def __str__(self):
         return f"Message from {self.institute.name}: {self.subject}"
 
+from django.utils import timezone
+
 #-- NEW FEE MANAGEMENT MODELS ---
 
 class FeeItem(models.Model):
@@ -51,13 +66,30 @@ class FeeItem(models.Model):
     fee_type = models.CharField(max_length=20, choices=FEE_TYPE_CHOICES, default='tuition')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     due_date = models.DateField()
-    is_paid = models.BooleanField(default=False) # We can track status per item
+    is_paid = models.BooleanField(default=False) # Per-item flag (can be synced or deprecated)
+
+    @property
+    def total_paid(self):
+        paid = self.payments.aggregate(total=Sum('amount'))['total']
+        return paid or Decimal('0.00')
+
+    @property
+    def status(self):
+        paid = self.total_paid
+        if paid >= self.amount:
+            return 'paid'
+        elif paid > 0:
+            return 'partial'
+        if self.due_date < timezone.now().date():
+            return 'overdue'
+        return 'unpaid'
 
     def __str__(self):
         return f"{self.description} for {self.student_profile.user.username}"
 
 class Payment(models.Model):
-    """Represents a single payment made by a student towards their total balance."""
+    """Represents a single payment made by a student towards a specific fee item."""
+    fee_item = models.ForeignKey('FeeItem', on_delete=models.CASCADE, related_name='payments', null=True, blank=True)
     student_profile = models.ForeignKey('questionbank.UserProfile', on_delete=models.CASCADE, related_name='payments')
     amount = models.DecimalField(max_digits=10, decimal_places=2)
     payment_date = models.DateTimeField(auto_now_add=True)
@@ -67,45 +99,6 @@ class Payment(models.Model):
     def __str__(self):
         return f"Payment of {self.amount} by {self.student_profile.user.username}"
 
-
-
-class FeeStructure(models.Model):
-    """
-    Defines the fee structure for a specific student in an institute.
-    """
-    student_profile = models.OneToOneField('questionbank.UserProfile', on_delete=models.CASCADE, related_name='fee_structure')
-    total_fees = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
-    due_date = models.DateField(null=True, blank=True)
-    
-    @property
-    def amount_paid(self):
-        paid = self.transactions.aggregate(total=Sum('amount'))['total']
-        # CORRECTED: Return a Decimal('0.00') instead of a float 0.00
-        return paid or Decimal('0.00')
-    
-    @property
-    def balance_due(self):
-        # This will now correctly subtract a Decimal from a Decimal
-        return self.total_fees - self.amount_paid
-
-    def __str__(self):
-        if self.student_profile and self.student_profile.user:
-            return f"Fee Structure for {self.student_profile.user.username}"
-        return f"Fee Structure {self.id}"
-
-class PaymentTransaction(models.Model):
-    """
-    Records a single payment made by a student.
-    """
-    # Using a string reference is a best practice for ForeignKeys.
-    fee_structure = models.ForeignKey('FeeStructure', on_delete=models.CASCADE, related_name='transactions')
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    payment_date = models.DateTimeField(auto_now_add=True)
-    payment_method = models.CharField(max_length=50, default='Offline')
-    notes = models.TextField(blank=True)
-
-    def __str__(self):
-        return f"Payment of {self.amount} on {self.payment_date.strftime('%Y-%m-%d')}"
 
 
 # institutes/models.py
@@ -132,3 +125,62 @@ class InstituteJoinRequest(models.Model):
 
     def __str__(self):
         return f"{self.student_profile.user.username}'s request to join {self.institute.name}"
+
+
+class Batch(models.Model):
+    """Represents a student batch in the coaching center."""
+    institute = models.ForeignKey('Institute', on_delete=models.CASCADE, related_name='batches')
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.name} - {self.institute.name}"
+
+
+class BatchMembership(models.Model):
+    """Associates a student profile to a specific batch."""
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='memberships')
+    student_profile = models.ForeignKey('questionbank.UserProfile', on_delete=models.CASCADE, related_name='batch_memberships')
+    joined_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('batch', 'student_profile')
+
+    def __str__(self):
+        return f"{self.student_profile.user.username} in {self.batch.name}"
+
+
+class Attendance(models.Model):
+    """Tracks daily student attendance for a batch."""
+    STATUS_CHOICES = [
+        ('present', 'Present'),
+        ('absent', 'Absent'),
+        ('late', 'Late'),
+        ('excused', 'Excused')
+    ]
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='attendance_records')
+    student_profile = models.ForeignKey('questionbank.UserProfile', on_delete=models.CASCADE, related_name='attendances')
+    date = models.DateField()
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES)
+    marked_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('batch', 'student_profile', 'date')
+
+    def __str__(self):
+        return f"{self.student_profile.user.username} - {self.date} - {self.status}"
+
+
+class Note(models.Model):
+    """Uploaded study materials or PDFs scoped by institute and optionally batch."""
+    institute = models.ForeignKey('Institute', on_delete=models.CASCADE, related_name='notes')
+    batch = models.ForeignKey(Batch, on_delete=models.CASCADE, related_name='notes', null=True, blank=True)
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    file = models.FileField(upload_to='study_notes/')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.title

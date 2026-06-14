@@ -5,7 +5,7 @@ from django.db.models import Sum
 # --- Local application models ---
 from .models import (
     ExamCategory, Exam, Topic, Question, Bookmark, Report, 
-    UserProfile, UserAnswer, ExamSyllabus
+    UserProfile, UserAnswer, ExamSyllabus, CurrentAffairs
 )
 # --- Cross-application models ---
 from institutes.models import Institute
@@ -104,28 +104,16 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserProfile
-        # The `fields` list now correctly includes all readable and writable fields
         fields = [
             'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload', 
             'qualifications', 'date_of_birth', 'place', 'preferred_difficulty',
             'is_owner', 'join_request_status', 'fee_status', 
             'preferred_topics', 'preferred_topics_ids',
-            'preferred_exams', 'preferred_exams_ids','bio',
-            'is_content_creator'
+            'preferred_exams', 'preferred_exams_ids', 'bio',
+            'is_content_creator', 'total_xp', 'level', 'current_streak', 
+            'longest_streak', 'last_active_date', 'streak_freeze_count'
         ]
-        # We make 'user' read-only in the Meta to prevent accidental updates via this serializer's main logic
-        read_only_fields = ['user']
-
-    class Meta:
-        model = UserProfile
-        fields = [
-            'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload',
-            'qualifications', 'date_of_birth', 'place', 'preferred_difficulty',
-            'is_owner', 'join_request_status', 'fee_status',
-            'preferred_topics', 'preferred_topics_ids',
-            'preferred_exams', 'preferred_exams_ids',
-            'is_content_creator'
-        ]
+        read_only_fields = ['user', 'total_xp', 'level', 'current_streak', 'longest_streak', 'last_active_date', 'streak_freeze_count']
 
     def get_institute(self, obj):
         from institutes.serializers import InstituteSerializer
@@ -336,3 +324,17 @@ class ExamAnnouncementSerializer(serializers.ModelSerializer):
         if obj.pdf_file and hasattr(obj.pdf_file, 'url'):
             return request.build_absolute_uri(obj.pdf_file.url)
         return None
+
+
+class CurrentAffairsSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CurrentAffairs
+        fields = ['id', 'title', 'slug', 'content', 'category', 'publication_date', 'psc_likelihood', 'ai_summary', 'created_at']
+
+
+from .models import StudyFeedCard
+
+class StudyFeedCardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudyFeedCard
+        fields = ['id', 'card_type', 'title', 'content_data', 'psc_likelihood_tag', 'created_at']

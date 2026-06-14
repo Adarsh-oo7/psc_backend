@@ -21,6 +21,7 @@ class ExamCategory(models.Model):
 class Exam(models.Model):
     category = models.ForeignKey('ExamCategory', on_delete=models.SET_NULL, related_name='exams', null=True, blank=True)
     name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=150, null=True, blank=True, unique=True)
     year = models.IntegerField()
     duration_minutes = models.PositiveIntegerField(default=75, help_text="Exam duration in minutes")
 
@@ -29,6 +30,7 @@ class Exam(models.Model):
 
 class Topic(models.Model):
     name = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=150, null=True, blank=True, unique=True)
     institute = models.ForeignKey('institutes.Institute', on_delete=models.CASCADE, null=True, blank=True, related_name='topics')
     image = models.ImageField(upload_to='topic_images/', null=True, blank=True)
 
@@ -42,6 +44,7 @@ class Question(models.Model):
     
     # Only the new ManyToManyField remains. This is the final version.
     exams = models.ManyToManyField('Exam', related_name='questions')
+    slug = models.SlugField(max_length=150, null=True, blank=True, unique=True)
     
     sub_topic = models.CharField(max_length=255, blank=True, help_text="e.g., Indian Freedom Movement")
     topic = models.ForeignKey('Topic', on_delete=models.CASCADE, related_name='questions_topic')
@@ -82,9 +85,15 @@ class UserProfile(models.Model):
     # --- NEW: Field to store multiple preferred exams ---
     preferred_exams = models.ManyToManyField('Exam', blank=True, related_name='followers')
     bio = models.TextField(blank=True, help_text="A short description or bio for the user's public profile.")
-    
-    is_content_creator = models.BooleanField(default=False, help_text="Designates this user as a trusted community content creator.")
     is_owner = models.BooleanField(default=False) # We will keep this for future institute features
+    
+    # --- Gamification and Streak Fields ---
+    total_xp = models.PositiveIntegerField(default=0)
+    level = models.PositiveIntegerField(default=1)
+    current_streak = models.PositiveIntegerField(default=0)
+    longest_streak = models.PositiveIntegerField(default=0)
+    last_active_date = models.DateField(null=True, blank=True)
+    streak_freeze_count = models.PositiveIntegerField(default=0)
     
 
 
@@ -229,3 +238,77 @@ class ExamAnnouncement(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class CurrentAffairs(models.Model):
+    LIKELIHOOD_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High')
+    ]
+    title = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=255, unique=True, blank=True, null=True)
+    content = models.TextField(help_text="Full news article details")
+    category = models.CharField(max_length=50, default='Kerala')
+    publication_date = models.DateField(default=timezone.now)
+    psc_likelihood = models.CharField(max_length=10, choices=LIKELIHOOD_CHOICES, default='medium')
+    ai_summary = models.TextField(blank=True, help_text="AI-generated summary")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Current Affairs"
+        ordering = ['-publication_date', '-created_at']
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+            import uuid
+            base_slug = slugify(self.title) or "current-affair"
+            self.slug = f"{base_slug}-{uuid.uuid4().hex[:6]}"
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return self.title
+
+
+class StudyFeedCard(models.Model):
+    CARD_TYPES = [
+        ('question', 'Question'),
+        ('current_affairs', 'Current Affairs'),
+        ('fact', 'Fact'),
+        ('community_win', 'Community Win')
+    ]
+    card_type = models.CharField(max_length=20, choices=CARD_TYPES)
+    title = models.CharField(max_length=255)
+    content_data = models.JSONField(help_text="Dynamic contents based on card type")
+    psc_likelihood_tag = models.CharField(max_length=5, blank=True) # 🔥, 💡 etc.
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"{self.card_type}: {self.title}"
+
+
+class UserFeedView(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    card = models.ForeignKey(StudyFeedCard, on_delete=models.CASCADE)
+    viewed_date = models.DateField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'card', 'viewed_date')
+
+    def __str__(self):
+        return f"{self.user.username} viewed {self.card.id} on {self.viewed_date}"
+
+
+class AIExplanationCache(models.Model):
+    question = models.ForeignKey('Question', on_delete=models.CASCADE)
+    language = models.CharField(max_length=5, default='en') # 'en' or 'ml'
+    explanation_text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('question', 'language')
+
+    def __str__(self):
+        return f"{self.question.id} ({self.language})"

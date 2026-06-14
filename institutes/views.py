@@ -1,15 +1,19 @@
 # institutes/views.py
 
 # --- Imports ---
-from rest_framework import generics, status
+from rest_framework import generics, status, views
+from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.exceptions import PermissionDenied
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 
-from .models import Institute, FeeStructure, PaymentTransaction
+from django.utils import timezone
+from .models import Institute, FeeItem, Payment, Batch, BatchMembership, Attendance, Note
 from .permissions import IsInstituteOwner
 from .serializers import (
-    InstituteSerializer, StudentCreateSerializer, MessageCreateSerializer, 
-    FeeStructureSerializer, PaymentTransactionSerializer
+    InstituteSerializer, StudentCreateSerializer, MessageCreateSerializer,
+    BatchSerializer, BatchDetailSerializer, AttendanceSerializer, NoteSerializer
 )
 
 # Import models and serializers from the 'questionbank' app
@@ -28,7 +32,13 @@ class MyInstituteDetailView(generics.RetrieveUpdateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_object(self):
-        institute, _ = Institute.objects.get_or_create(owner=self.request.user)
+        institute, _ = Institute.objects.get_or_create(
+            owner=self.request.user,
+            defaults={
+                'name': f"Institute {self.request.user.id}",
+                'slug': f"institute-{self.request.user.id}"
+            }
+        )
         return institute
 
 
@@ -159,7 +169,7 @@ class StudentFeeDashboardView(views.APIView):
 
 class StudentPaymentCreateView(generics.CreateAPIView):
     """
-    Records a new payment for a student.
+    Records a new general payment for a student.
     """
     serializer_class = PaymentSerializer
     permission_classes = [IsInstituteOwner]
@@ -169,12 +179,21 @@ class StudentPaymentCreateView(generics.CreateAPIView):
         serializer.save(student_profile=profile)
 
 
+class FeePaymentCreateView(generics.CreateAPIView):
+    """
+    Records a new payment for a specific fee item.
+    """
+    serializer_class = PaymentSerializer
+    permission_classes = [IsInstituteOwner]
+
+    def perform_create(self, serializer):
+        fee_item = get_object_or_404(FeeItem, pk=self.kwargs['fee_pk'], student_profile__institute=self.request.user.owned_institute)
+        serializer.save(fee_item=fee_item, student_profile=fee_item.student_profile)
+
+
 
 from .models import InstituteJoinRequest
 from .serializers import JoinRequestSerializer
-from django.shortcuts import get_object_or_404
-from rest_framework.views import APIView
-from rest_framework.response import Response
 
 class InstituteJoinRequestListView(generics.ListAPIView):
     """Lists pending join requests for an institute."""
@@ -216,6 +235,16 @@ class PublicInstituteListView(generics.ListAPIView):
     permission_classes = [AllowAny] 
 
 
+class PublicInstituteDetailView(generics.RetrieveAPIView):
+    """
+    Public SEO endpoint to fetch a single institute's profile by slug.
+    """
+    queryset = Institute.objects.filter(subdomain_active=True)
+    serializer_class = InstituteSerializer
+    permission_classes = [AllowAny]
+    lookup_field = 'slug'
+
+
 
     # institutes/views.py
 
@@ -247,9 +276,155 @@ class AddStudentByUsernameView(APIView):
         if hasattr(user_to_add, 'userprofile') and user_to_add.userprofile.institute:
             raise ValidationError({'username': 'This user already belongs to another institute.'})
 
+        # Check student limit
+        from subscriptions.utils import check_institute_student_limit
+        if not check_institute_student_limit(request.user.owned_institute):
+            raise PermissionDenied("Your institute has reached its plan's student limit. Please upgrade your subscription.")
+
         # If everything is okay, assign the user to the owner's institute
         profile, _ = UserProfile.objects.get_or_create(user=user_to_add)
         profile.institute = request.user.owned_institute
         profile.save()
         
         return Response(UserProfileSerializer(profile).data, status=status.HTTP_200_OK)
+
+
+class BatchListCreateView(generics.ListCreateAPIView):
+    """
+    List and create student batches for an institute.
+    """
+    serializer_class = BatchSerializer
+    permission_classes = [IsInstituteOwner]
+
+    def get_queryset(self):
+        return Batch.objects.filter(institute=self.request.user.owned_institute)
+
+    def perform_create(self, serializer):
+        serializer.save(institute=self.request.user.owned_institute)
+
+
+class BatchDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    View, update, or delete a specific batch.
+    """
+    serializer_class = BatchDetailSerializer
+    permission_classes = [IsInstituteOwner]
+
+    def get_queryset(self):
+        return Batch.objects.filter(institute=self.request.user.owned_institute)
+
+
+class BatchMembershipView(APIView):
+    """
+    Add or remove students to/from a specific batch.
+    POST: Add student (expects {student_profile_id: int})
+    DELETE: Remove student (expects {student_profile_id: int})
+    """
+    permission_classes = [IsInstituteOwner]
+
+    def post(self, request, pk):
+        batch = get_object_or_404(Batch, pk=pk, institute=request.user.owned_institute)
+        student_id = request.data.get('student_profile_id')
+        student_profile = get_object_or_404(UserProfile, pk=student_id, institute=request.user.owned_institute)
+        
+        membership, created = BatchMembership.objects.get_or_create(
+            batch=batch,
+            student_profile=student_profile
+        )
+        return Response({'status': 'Student added to batch', 'created': created}, status=status.HTTP_201_CREATED)
+
+    def delete(self, request, pk):
+        batch = get_object_or_404(Batch, pk=pk, institute=request.user.owned_institute)
+        student_id = request.data.get('student_profile_id')
+        membership = get_object_or_404(BatchMembership, batch=batch, student_profile_id=student_id)
+        membership.delete()
+        return Response({'status': 'Student removed from batch'}, status=status.HTTP_200_OK)
+
+
+class AttendanceListCreateView(APIView):
+    """
+    List and record attendance for a batch on a specific date.
+    GET: /api/institute/batches/<pk>/attendance/?date=YYYY-MM-DD
+    POST: /api/institute/batches/<pk>/attendance/
+      expects body: { date: 'YYYY-MM-DD', attendance: { student_profile_id: 'present/absent' } }
+    """
+    permission_classes = [IsInstituteOwner]
+
+    def get(self, request, pk):
+        batch = get_object_or_404(Batch, pk=pk, institute=request.user.owned_institute)
+        date_str = request.query_params.get('date', timezone.now().date().isoformat())
+        
+        # Get all memberships
+        memberships = batch.memberships.select_related('student_profile__user')
+        
+        # Get existing attendance records
+        records = Attendance.objects.filter(batch=batch, date=date_str)
+        records_map = {r.student_profile_id: r.status for r in records}
+        
+        response_data = []
+        for member in memberships:
+            prof = member.student_profile
+            response_data.append({
+                'student_profile_id': prof.id,
+                'username': prof.user.username,
+                'full_name': prof.user.get_full_name(),
+                'status': records_map.get(prof.id, 'unmarked')
+            })
+            
+        return Response({'date': date_str, 'attendance': response_data})
+
+    def post(self, request, pk):
+        batch = get_object_or_404(Batch, pk=pk, institute=request.user.owned_institute)
+        date_str = request.data.get('date')
+        attendance_data = request.data.get('attendance', {})
+        
+        if not date_str:
+            raise ValidationError({'date': 'This field is required.'})
+            
+        created_count = 0
+        for student_id_str, status_val in attendance_data.items():
+            try:
+                student_id = int(student_id_str)
+            except ValueError:
+                continue
+                
+            student_profile = get_object_or_404(UserProfile, pk=student_id, institute=request.user.owned_institute)
+            
+            Attendance.objects.update_or_create(
+                batch=batch,
+                student_profile=student_profile,
+                date=date_str,
+                defaults={'status': status_val, 'marked_by': request.user}
+            )
+            created_count += 1
+            
+        return Response({'status': f'Recorded attendance for {created_count} students.'}, status=status.HTTP_200_OK)
+
+
+class NoteListCreateView(generics.ListCreateAPIView):
+    """
+    List and create study materials/notes for an institute.
+    """
+    serializer_class = NoteSerializer
+    permission_classes = [IsInstituteOwner]
+
+    def get_queryset(self):
+        queryset = Note.objects.filter(institute=self.request.user.owned_institute)
+        batch_id = self.request.query_params.get('batch_id')
+        if batch_id:
+            queryset = queryset.filter(batch_id=batch_id)
+        return queryset
+
+    def perform_create(self, serializer):
+        serializer.save(institute=self.request.user.owned_institute)
+
+
+class NoteDetailView(generics.RetrieveUpdateDestroyAPIView):
+    """
+    View, update, or delete a study material note.
+    """
+    serializer_class = NoteSerializer
+    permission_classes = [IsInstituteOwner]
+
+    def get_queryset(self):
+        return Note.objects.filter(institute=self.request.user.owned_institute)

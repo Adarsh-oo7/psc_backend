@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from django.db import transaction
 
-from .models import Institute, Message, FeeStructure, PaymentTransaction, FeeItem, Payment, InstituteJoinRequest
+from .models import Institute, Message, FeeItem, Payment, InstituteJoinRequest, Batch, BatchMembership, Attendance, Note
 from questionbank.models import UserProfile
 # We import UserSerializer which is simple and doesn't cause a loop
 from questionbank.serializers import UserSerializer
@@ -15,7 +15,9 @@ class InstituteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Institute
         fields = [
-            'id', 'name', 'logo', 'contact_email',
+            'id', 'name', 'slug', 'logo', 'contact_email', 'tagline',
+            'primary_color', 'accent_color', 'custom_domain', 'address',
+            'phone', 'website', 'established_year',
             'login_bg_image', 'login_image_1', 'login_image_2', 'login_image_3'
         ]
         read_only_fields = ['id']
@@ -36,6 +38,10 @@ class StudentCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         institute = self.context['institute']
+        from subscriptions.utils import check_institute_student_limit
+        if not check_institute_student_limit(institute):
+            raise serializers.ValidationError("Your institute has reached its plan's student limit. Please upgrade your subscription.")
+            
         with transaction.atomic():
             # The User model's create_user method handles these fields automatically
             user = User.objects.create_user(
@@ -76,22 +82,7 @@ class ReceivedMessageSerializer(serializers.ModelSerializer):
 # --- Fee and Payment Serializers ---
 # ===================================================================
 
-class PaymentTransactionSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = PaymentTransaction
-        fields = '__all__'
-
-class FeeStructureSerializer(serializers.ModelSerializer):
-    transactions = PaymentTransactionSerializer(many=True, read_only=True)
-    amount_paid = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-    balance_due = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
-
-    class Meta:
-        model = FeeStructure
-        fields = [
-            'id', 'student_profile', 'total_fees', 'due_date', 
-            'amount_paid', 'balance_due', 'transactions'
-        ]
+# (FeeStructure and PaymentTransaction serializers removed)
 
 # ===================================================================
 # --- Join Request Serializer ---
@@ -110,14 +101,17 @@ class JoinRequestSerializer(serializers.ModelSerializer):
 
 
 class FeeItemSerializer(serializers.ModelSerializer):
+    status = serializers.CharField(read_only=True)
+    total_paid = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)
+
     class Meta:
         model = FeeItem
-        fields = ['id', 'description', 'fee_type', 'amount', 'due_date', 'is_paid']
+        fields = ['id', 'description', 'fee_type', 'amount', 'due_date', 'is_paid', 'status', 'total_paid']
 
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
-        fields = ['id', 'amount', 'payment_date', 'payment_method', 'notes']
+        fields = ['id', 'fee_item', 'amount', 'payment_date', 'payment_method', 'notes']
 
 class StudentFeeDashboardSerializer(serializers.Serializer):
     """A custom serializer to combine all fee data into one response."""
@@ -126,3 +120,45 @@ class StudentFeeDashboardSerializer(serializers.Serializer):
     outstanding_amount = serializers.DecimalField(max_digits=10, decimal_places=2)
     fees = FeeItemSerializer(many=True)
     payments = PaymentSerializer(many=True)
+
+
+class BatchSerializer(serializers.ModelSerializer):
+    student_count = serializers.IntegerField(source='memberships.count', read_only=True)
+
+    class Meta:
+        model = Batch
+        fields = ['id', 'name', 'description', 'student_count', 'created_at']
+
+class BatchDetailSerializer(serializers.ModelSerializer):
+    students = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Batch
+        fields = ['id', 'name', 'description', 'students', 'created_at']
+
+    def get_students(self, obj):
+        memberships = obj.memberships.select_related('student_profile__user')
+        from questionbank.serializers import UserProfileSerializer
+        return UserProfileSerializer([m.student_profile for m in memberships], many=True, context=self.context).data
+
+class AttendanceSerializer(serializers.ModelSerializer):
+    student_name = serializers.CharField(source='student_profile.user.username', read_only=True)
+    student_full_name = serializers.CharField(source='student_profile.user.get_full_name', read_only=True)
+
+    class Meta:
+        model = Attendance
+        fields = ['id', 'batch', 'student_profile', 'student_name', 'student_full_name', 'date', 'status']
+
+class NoteSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Note
+        fields = ['id', 'batch', 'title', 'description', 'file', 'file_url', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def get_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.file and hasattr(obj.file, 'url'):
+            return request.build_absolute_uri(obj.file.url)
+        return None

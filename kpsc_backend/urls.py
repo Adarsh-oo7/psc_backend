@@ -32,8 +32,8 @@ urlpatterns = [
     # This makes endpoints like /api/institute/students/ and /api/institute/my-institute/ active.
     path('api/institute/', include('institutes.urls')),
 
-    path('api/messaging/', include('messaging.urls')), # <-- ADD THIS LINE
-
+    path('api/messaging/', include('messaging.urls')),
+    path('api/subscriptions/', include('subscriptions.urls')),
 
     # JWT Token Authentication URLs
     path('api/auth/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
