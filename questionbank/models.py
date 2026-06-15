@@ -204,6 +204,12 @@ class PreviousYearPaper(models.Model):
     exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='pyq_papers')
     year = models.PositiveIntegerField()
     pdf_file = models.FileField(upload_to='pyq_papers/')
+    questions = models.ManyToManyField(
+        'Question',
+        blank=True,
+        related_name='pyq_papers',
+        help_text="Link questions from this paper to enable quiz mode"
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -312,3 +318,80 @@ class AIExplanationCache(models.Model):
 
     def __str__(self):
         return f"{self.question.id} ({self.language})"
+
+
+# ===================================================================
+# --- Models for Study Flow & Analytics ---
+# ===================================================================
+
+class TopicProgress(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='topic_progress')
+    topic = models.ForeignKey(Topic, on_delete=models.CASCADE)
+    total_attempted = models.PositiveIntegerField(default=0)
+    total_correct = models.PositiveIntegerField(default=0)
+    easy_attempted = models.PositiveIntegerField(default=0)
+    easy_correct = models.PositiveIntegerField(default=0)
+    medium_attempted = models.PositiveIntegerField(default=0)
+    medium_correct = models.PositiveIntegerField(default=0)
+    hard_attempted = models.PositiveIntegerField(default=0)
+    hard_correct = models.PositiveIntegerField(default=0)
+    last_practiced = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'topic')
+
+    @property
+    def accuracy(self):
+        if self.total_attempted == 0:
+            return 0.0
+        return round((self.total_correct / self.total_attempted) * 100, 1)
+
+    @property
+    def is_weak_area(self):
+        return self.total_attempted >= 10 and self.accuracy < 50
+
+    def __str__(self):
+        return f"{self.user.username} | {self.topic.name} | {self.accuracy}%"
+
+
+class PracticeSession(models.Model):
+    SESSION_TYPES = [
+        ('topic', 'Topic Practice'),
+        ('difficulty', 'Difficulty Drill'),
+        ('mixed', 'Mixed Practice'),
+        ('pyq', 'Previous Year Questions'),
+        ('weak_area', 'Weak Area Drill'),
+    ]
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='practice_sessions')
+    session_type = models.CharField(max_length=20, choices=SESSION_TYPES)
+    topic = models.ForeignKey(Topic, on_delete=models.SET_NULL, null=True, blank=True)
+    difficulty = models.CharField(max_length=20, blank=True)
+    questions = models.ManyToManyField(Question, through='SessionAnswer')
+    started_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    total_questions = models.PositiveIntegerField(default=0)
+    correct_count = models.PositiveIntegerField(default=0)
+    time_taken_secs = models.PositiveIntegerField(default=0)
+
+    @property
+    def score_percent(self):
+        if self.total_questions == 0:
+            return 0.0
+        return round((self.correct_count / self.total_questions) * 100, 1)
+
+    def __str__(self):
+        return f"{self.user.username} | {self.session_type} | {self.score_percent}%"
+
+
+class SessionAnswer(models.Model):
+    session = models.ForeignKey(PracticeSession, on_delete=models.CASCADE, related_name='answers')
+    question = models.ForeignKey(Question, on_delete=models.CASCADE)
+    selected_option = models.CharField(max_length=1, blank=True)
+    is_correct = models.BooleanField(default=False)
+    time_spent_secs = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        unique_together = ('session', 'question')
+
+    def __str__(self):
+        return f"{self.session.id} | {self.question.id} | {self.is_correct}"

@@ -69,4 +69,12 @@ urlpatterns = [
     path('study-feed/', views.StudyFeedView.as_view(), name='study-feed'),
     path('study-feed/view/', views.RecordCardView.as_view(), name='study-feed-view'),
     path('questions/<int:pk>/explanation/', views.QuestionExplanationView.as_view(), name='question-explanation'),
+
+    # --- Study Flow & Analytics URLs ---
+    path('topics/', views.TopicListView.as_view(), name='topic-list'),
+    path('topics/<slug:slug>/questions/', views.TopicQuestionsView.as_view(), name='topic-questions'),
+    path('practice/start/', views.PracticeStartView.as_view(), name='practice-start'),
+    path('practice/<int:session_id>/submit/', views.PracticeSubmitView.as_view(), name='practice-submit'),
+    path('analytics/weak-areas/', views.WeakAreasView.as_view(), name='weak-areas'),
+    path('analytics/topic-summary/', views.TopicSummaryView.as_view(), name='topic-summary'),
 ]

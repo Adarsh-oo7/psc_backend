@@ -661,9 +661,14 @@ from .models import PreviousYearPaper
 
 @admin.register(PreviousYearPaper)
 class PreviousYearPaperAdmin(admin.ModelAdmin):
-    list_display = ('title', 'exam', 'year', 'uploaded_at')
+    list_display = ('title', 'exam', 'year', 'question_count_display', 'uploaded_at')
     list_filter = ('exam', 'year')
     search_fields = ('title',)
+    filter_horizontal = ('questions',)
+
+    def question_count_display(self, obj):
+        return obj.questions.count()
+    question_count_display.short_description = 'Linked Questions'
 
 
 # In questionbank/admin.py
@@ -700,3 +705,48 @@ class AIExplanationCacheAdmin(admin.ModelAdmin):
     list_display = ('question', 'language', 'created_at')
     list_filter = ('language',)
     search_fields = ('question__text',)
+
+
+# ===================================================================
+# --- Study Flow & Analytics Admin ---
+# ===================================================================
+from .models import TopicProgress, PracticeSession, SessionAnswer
+
+
+class SessionAnswerInline(admin.TabularInline):
+    model = SessionAnswer
+    extra = 0
+    readonly_fields = ('question', 'selected_option', 'is_correct', 'time_spent_secs')
+    can_delete = False
+
+
+@admin.register(TopicProgress)
+class TopicProgressAdmin(admin.ModelAdmin):
+    list_display = ('user', 'topic', 'accuracy_display', 'total_attempted', 'is_weak_area_display', 'last_practiced')
+    list_filter = ('topic',)
+    search_fields = ('user__username', 'topic__name')
+    readonly_fields = ('user', 'topic', 'total_attempted', 'total_correct',
+                       'easy_attempted', 'easy_correct', 'medium_attempted', 'medium_correct',
+                       'hard_attempted', 'hard_correct')
+
+    @admin.display(description='Accuracy')
+    def accuracy_display(self, obj):
+        return f"{obj.accuracy}%"
+
+    @admin.display(description='Weak Area?', boolean=True)
+    def is_weak_area_display(self, obj):
+        return obj.is_weak_area
+
+
+@admin.register(PracticeSession)
+class PracticeSessionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'session_type', 'topic', 'score_display', 'total_questions', 'started_at', 'completed_at')
+    list_filter = ('session_type', 'topic')
+    search_fields = ('user__username',)
+    inlines = [SessionAnswerInline]
+    readonly_fields = ('user', 'session_type', 'topic', 'difficulty', 'started_at', 'completed_at',
+                       'total_questions', 'correct_count', 'time_taken_secs')
+
+    @admin.display(description='Score')
+    def score_display(self, obj):
+        return f"{obj.score_percent}%"

@@ -1212,3 +1212,265 @@ class WeeklyGoalsView(views.APIView):
             'xp': profile.total_xp
         })
 
+
+# ===================================================================
+# --- STUDY FLOW & ANALYTICS VIEWS ---
+# ===================================================================
+from rest_framework import generics, views, status
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
+from django.db.models import Q
+from django.utils import timezone
+from rest_framework.pagination import PageNumberPagination
+
+from .models import TopicProgress, PracticeSession, SessionAnswer, Topic, Question, UserAnswer
+from .serializers import (
+    TopicListSerializer, QuestionSerializer, QuestionResultSerializer,
+    PracticeSessionSerializer, SessionAnswerSerializer
+)
+
+class TopicListView(generics.ListAPIView):
+    serializer_class = TopicListSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        base_query = Q(institute__isnull=True)
+        if hasattr(user, 'userprofile') and user.userprofile.institute:
+            base_query |= Q(institute=user.userprofile.institute)
+        return Topic.objects.filter(base_query).distinct().order_by('name')
+
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+
+class TopicQuestionsPagination(PageNumberPagination):
+    page_size = 20
+
+
+class TopicQuestionsView(generics.ListAPIView):
+    serializer_class = QuestionSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = TopicQuestionsPagination
+
+    def get_queryset(self):
+        slug = self.kwargs.get('slug')
+        topic = get_object_or_404(Topic, slug=slug)
+        user = self.request.user
+        
+        base_query = Q(topic=topic, institute__isnull=True)
+        if hasattr(user, 'userprofile') and user.userprofile.institute:
+            base_query |= Q(topic=topic, institute=user.userprofile.institute)
+            
+        qs = Question.objects.filter(base_query).distinct()
+        
+        difficulty = self.request.query_params.get('difficulty')
+        if difficulty in ('easy', 'medium', 'hard'):
+            qs = qs.filter(difficulty=difficulty)
+            
+        exclude_answered = self.request.query_params.get('exclude_answered', 'false')
+        if exclude_answered.lower() == 'true':
+            answered_correct_ids = UserAnswer.objects.filter(
+                user=user, is_correct=True
+            ).values_list('question_id', flat=True)
+            qs = qs.exclude(id__in=answered_correct_ids)
+            
+        limit = self.request.query_params.get('limit', '20')
+        if limit and limit.isdigit():
+            qs = Question.objects.filter(id__in=list(qs.values_list('id', flat=True)[:int(limit)]))
+            
+        return qs.order_by('id')
+
+
+class PracticeStartView(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, *args, **kwargs):
+        topic_slug = request.data.get('topic_slug')
+        difficulty = request.data.get('difficulty')
+        count = int(request.data.get('count', 10))
+        session_type = request.data.get('session_type', 'topic')
+        
+        user = request.user
+        base_query = Q(institute__isnull=True)
+        if hasattr(user, 'userprofile') and user.userprofile.institute:
+            base_query |= Q(institute=user.userprofile.institute)
+            
+        qs = Question.objects.filter(base_query)
+        topic = None
+        if topic_slug:
+            topic = get_object_or_404(Topic, slug=topic_slug)
+            qs = qs.filter(topic=topic)
+            
+        if difficulty in ('easy', 'medium', 'hard'):
+            qs = qs.filter(difficulty=difficulty)
+            
+        questions_list = list(qs.distinct().order_by('?')[:count])
+        if not questions_list:
+            return Response({"error": "No questions found matching your criteria."}, status=404)
+            
+        session = PracticeSession.objects.create(
+            user=user,
+            session_type=session_type,
+            topic=topic,
+            difficulty=difficulty or '',
+            total_questions=len(questions_list)
+        )
+        
+        session_answers = [
+            SessionAnswer(session=session, question=q)
+            for q in questions_list
+        ]
+        SessionAnswer.objects.bulk_create(session_answers)
+        
+        serializer = QuestionSerializer(questions_list, many=True, context={'request': request})
+        return Response({
+            'session_id': session.id,
+            'questions': serializer.data
+        }, status=status.HTTP_201_CREATED)
+
+
+class PracticeSubmitView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, session_id):
+        session = get_object_or_404(PracticeSession, id=session_id, user=request.user)
+        if session.completed_at:
+            return Response({"error": "This session has already been completed."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        answers_data = request.data.get('answers', [])
+        total_time_secs = int(request.data.get('total_time_secs', 0))
+        
+        q_ids = [ans.get('question_id') for ans in answers_data if ans.get('question_id')]
+        questions_map = {q.id: q for q in Question.objects.filter(id__in=q_ids)}
+        
+        correct_count = 0
+        results_list = []
+        
+        for ans_item in answers_data:
+            q_id = ans_item.get('question_id')
+            selected = ans_item.get('selected_option', '')
+            time_spent = int(ans_item.get('time_spent_secs', 0))
+            
+            question = questions_map.get(q_id)
+            if not question:
+                continue
+                
+            is_correct = (selected == question.correct_answer) if selected else False
+            if is_correct:
+                correct_count += 1
+                
+            SessionAnswer.objects.update_or_create(
+                session=session,
+                question=question,
+                defaults={
+                    'selected_option': selected,
+                    'is_correct': is_correct,
+                    'time_spent_secs': time_spent
+                }
+            )
+            
+            if selected:
+                UserAnswer.objects.create(
+                    user=request.user,
+                    question=question,
+                    selected_option=selected,
+                    is_correct=is_correct
+                )
+                
+            results_list.append({
+                'question': QuestionResultSerializer(question, context={'request': request}).data,
+                'selected_option': selected,
+                'is_correct': is_correct
+            })
+            
+        session.correct_count = correct_count
+        session.total_questions = len(answers_data)
+        session.time_taken_secs = total_time_secs
+        session.completed_at = timezone.now()
+        session.save()
+        
+        xp_earned = (correct_count * 10) + (len(answers_data) * 2)
+        from questionbank.gamification import award_xp
+        award_xp(request.user, xp_earned)
+        
+        return Response({
+            'score_percent': session.score_percent,
+            'correct_count': correct_count,
+            'total_questions': len(answers_data),
+            'xp_earned': xp_earned,
+            'results': results_list
+        }, status=200)
+
+
+class WeakAreasView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        progress_records = TopicProgress.objects.filter(user=request.user).select_related('topic')
+        weak_areas = []
+        for tp in progress_records:
+            if tp.is_weak_area:
+                def calc(attempted, correct):
+                    return round((correct / attempted) * 100, 1) if attempted > 0 else 0.0
+                
+                weak_areas.append({
+                    'topic_name': tp.topic.name,
+                    'topic_slug': tp.topic.slug,
+                    'accuracy': tp.accuracy,
+                    'total_attempted': tp.total_attempted,
+                    'easy_accuracy': calc(tp.easy_attempted, tp.easy_correct),
+                    'medium_accuracy': calc(tp.medium_attempted, tp.medium_correct),
+                    'hard_accuracy': calc(tp.hard_attempted, tp.hard_correct),
+                })
+        return Response(weak_areas)
+
+
+class TopicSummaryView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        base_query = Q(institute__isnull=True)
+        if hasattr(user, 'userprofile') and user.userprofile.institute:
+            base_query |= Q(institute=user.userprofile.institute)
+            
+        topics = Topic.objects.filter(base_query).distinct().order_by('name')
+        progress_map = {
+            tp.topic_id: tp for tp in TopicProgress.objects.filter(user=user)
+        }
+        
+        summary = []
+        for topic in topics:
+            tp = progress_map.get(topic.id)
+            
+            def calc(attempted, correct):
+                return round((correct / attempted) * 100, 1) if attempted > 0 else 0.0
+                
+            if tp:
+                summary.append({
+                    'topic_name': topic.name,
+                    'topic_slug': topic.slug,
+                    'accuracy': tp.accuracy,
+                    'easy_accuracy': calc(tp.easy_attempted, tp.easy_correct),
+                    'medium_accuracy': calc(tp.medium_attempted, tp.medium_correct),
+                    'hard_accuracy': calc(tp.hard_attempted, tp.hard_correct),
+                    'total_attempted': tp.total_attempted,
+                    'last_practiced': tp.last_practiced
+                })
+            else:
+                summary.append({
+                    'topic_name': topic.name,
+                    'topic_slug': topic.slug,
+                    'accuracy': 0.0,
+                    'easy_accuracy': 0.0,
+                    'medium_accuracy': 0.0,
+                    'hard_accuracy': 0.0,
+                    'total_attempted': 0,
+                    'last_practiced': None
+                })
+        return Response(summary)
+

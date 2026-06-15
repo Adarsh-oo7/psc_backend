@@ -337,4 +337,100 @@ from .models import StudyFeedCard
 class StudyFeedCardSerializer(serializers.ModelSerializer):
     class Meta:
         model = StudyFeedCard
-        fields = ['id', 'card_type', 'title', 'content_data', 'psc_likelihood_tag', 'created_at']
+        fields = ['id', 'card_type', 'title', 'content_data', 'psc_likelihood_tag', 'created_at']
+
+
+# ===================================================================
+# --- Study Flow & Analytics Serializers ---
+# ===================================================================
+from .models import TopicProgress, PracticeSession, SessionAnswer
+
+class TopicListSerializer(serializers.ModelSerializer):
+    question_count = serializers.SerializerMethodField()
+    user_accuracy = serializers.SerializerMethodField()
+    is_weak_area = serializers.SerializerMethodField()
+    last_practiced = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Topic
+        fields = ['id', 'name', 'slug', 'image', 'question_count', 'user_accuracy', 'is_weak_area', 'last_practiced']
+
+    def get_question_count(self, obj):
+        return obj.questions_topic.count()
+
+    def _get_progress(self, obj):
+        request = self.context.get('request')
+        if not request or not request.user or request.user.is_anonymous:
+            return None
+        if not hasattr(self, '_progress_cache'):
+            self._progress_cache = {
+                tp.topic_id: tp for tp in TopicProgress.objects.filter(user=request.user)
+            }
+        return self._progress_cache.get(obj.id)
+
+    def get_user_accuracy(self, obj):
+        progress = self._get_progress(obj)
+        return progress.accuracy if progress else 0.0
+
+    def get_is_weak_area(self, obj):
+        progress = self._get_progress(obj)
+        return progress.is_weak_area if progress else False
+
+    def get_last_practiced(self, obj):
+        progress = self._get_progress(obj)
+        return progress.last_practiced if progress else None
+
+
+class QuestionSerializer(serializers.ModelSerializer):
+    topic = serializers.CharField(source='topic.name', read_only=True)
+
+    class Meta:
+        model = Question
+        fields = ['id', 'text', 'options', 'difficulty', 'sub_topic', 'topic']
+
+
+class QuestionResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Question
+        fields = ['id', 'text', 'options', 'correct_answer', 'explanation', 'difficulty']
+
+
+class PracticeSessionSerializer(serializers.ModelSerializer):
+    topic = serializers.CharField(source='topic.name', read_only=True)
+    score_percent = serializers.FloatField(read_only=True)
+
+    class Meta:
+        model = PracticeSession
+        fields = [
+            'id', 'session_type', 'topic', 'difficulty', 'total_questions',
+            'correct_count', 'score_percent', 'started_at', 'completed_at',
+            'time_taken_secs'
+        ]
+
+
+class SessionAnswerSerializer(serializers.Serializer):
+    question_id = serializers.IntegerField()
+    selected_option = serializers.CharField(max_length=1, required=False, allow_blank=True, default='')
+    time_spent_secs = serializers.IntegerField(required=False, default=0)
+
+
+# Keep other serializers needed for previous APIs
+class PYQDetailSerializer(serializers.ModelSerializer):
+    pdf_file_url = serializers.SerializerMethodField()
+    questions = QuestionSerializer(many=True, read_only=True)
+    question_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = PreviousYearPaper
+        fields = ['id', 'title', 'year', 'pdf_file_url', 'questions', 'question_count']
+
+    def get_pdf_file_url(self, obj):
+        request = self.context.get('request')
+        if obj.pdf_file and hasattr(obj.pdf_file, 'url'):
+            return request.build_absolute_uri(obj.pdf_file.url) if request else obj.pdf_file.url
+        return None
+
+    def get_question_count(self, obj):
+        return obj.questions.count()
+
+
