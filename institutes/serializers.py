@@ -92,11 +92,20 @@ class JoinRequestSerializer(serializers.ModelSerializer):
     # CORRECTED: Instead of nesting the full UserProfileSerializer (which causes an import loop),
     # we nest the simple UserSerializer by pointing to the source.
     user = UserSerializer(source='student_profile.user', read_only=True)
+    profile_photo = serializers.SerializerMethodField()
 
     class Meta:
         model = InstituteJoinRequest
-        fields = ['id', 'user', 'institute', 'status', 'requested_at']
-        read_only_fields = ['id', 'user', 'status', 'requested_at']
+        fields = ['id', 'user', 'profile_photo', 'institute', 'status', 'requested_at']
+        read_only_fields = ['id', 'user', 'profile_photo', 'status', 'requested_at']
+
+    def get_profile_photo(self, obj):
+        if obj.student_profile and obj.student_profile.profile_photo:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.student_profile.profile_photo.url)
+            return obj.student_profile.profile_photo.url
+        return None
 
 
 
