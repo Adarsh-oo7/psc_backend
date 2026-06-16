@@ -150,11 +150,30 @@ class Question(models.Model):
 # ===================================================================
 
 class UserProfile(models.Model):
+    DISTRICT_CHOICES = [
+        ('TVM', 'Thiruvananthapuram'),
+        ('KLM', 'Kollam'),
+        ('PTA', 'Pathanamthitta'),
+        ('ALP', 'Alappuzha'),
+        ('KTY', 'Kottayam'),
+        ('IDK', 'Idukki'),
+        ('EKM', 'Ernakulam'),
+        ('TCR', 'Thrissur'),
+        ('PKD', 'Palakkad'),
+        ('MLP', 'Malappuram'),
+        ('KOZ', 'Kozhikode'),
+        ('WYD', 'Wayanad'),
+        ('KNR', 'Kannur'),
+        ('KSD', 'Kasaragod'),
+    ]
+
     user = models.OneToOneField(User, on_delete=models.CASCADE)
     profile_photo = models.ImageField(upload_to='profiles/', blank=True, null=True)
     qualifications = models.CharField(max_length=255, blank=True)
     date_of_birth = models.DateField(blank=True, null=True)
     place = models.CharField(max_length=100, blank=True)
+    district = models.CharField(max_length=3, choices=DISTRICT_CHOICES, blank=True)
+    friends = models.ManyToManyField('self', blank=True, symmetrical=True)
     preferred_topics = models.ManyToManyField('Topic', blank=True)
     preferred_difficulty = models.CharField(max_length=20, choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')], blank=True)
     institute = models.ForeignKey('institutes.Institute', on_delete=models.SET_NULL, null=True, blank=True, related_name='members')

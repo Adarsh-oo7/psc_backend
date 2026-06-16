@@ -9,9 +9,8 @@ class IsContentCreator(BasePermission):
         if request.method in ['GET', 'HEAD', 'OPTIONS']:
             return True
         
-        # For creating a post (POST), check if the user is a content creator
+        # For creating a post (POST), check if the user is authenticated
         return (
             request.user.is_authenticated and 
-            hasattr(request.user, 'userprofile') and 
-            request.user.userprofile.is_content_creator
+            hasattr(request.user, 'userprofile')
         )

@@ -80,4 +80,25 @@ def update_streak(user):
     profile.longest_streak = longest_streak
     profile.save(update_fields=['current_streak', 'longest_streak', 'last_active_date', 'streak_freeze_count'])
     
-    return current_streak, longest_streak, freeze_used
+    streak_promo_awarded = False
+    if current_streak >= 5 and not profile.is_premium:
+        from subscriptions.models import Plan, Subscription
+        
+        pro_plan = Plan.objects.filter(slug='pro-monthly').first()
+        profile.is_premium = True
+        profile.subscription_end_date = today + timedelta(days=30)
+        if pro_plan:
+            profile.subscription_plan = pro_plan
+        profile.save(update_fields=['is_premium', 'subscription_end_date', 'subscription_plan'])
+        
+        # Create Subscription record
+        Subscription.objects.create(
+            user=user,
+            plan=pro_plan or Plan.objects.first(),
+            status='active',
+            start_date=timezone.now(),
+            end_date=timezone.now() + timedelta(days=30)
+        )
+        streak_promo_awarded = True
+
+    return current_streak, longest_streak, freeze_used, streak_promo_awarded

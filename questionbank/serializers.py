@@ -79,6 +79,7 @@ import json
 class UserProfileSerializer(serializers.ModelSerializer):
     # This allows reading the nested user details
     user = UserSerializer(read_only=True)
+    district_display = serializers.SerializerMethodField(read_only=True)
     
     # These fields provide read-only, formatted data to the app
     institute = serializers.SerializerMethodField()
@@ -106,7 +107,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
         model = UserProfile
         fields = [
             'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload', 
-            'qualifications', 'date_of_birth', 'place', 'preferred_difficulty',
+            'qualifications', 'date_of_birth', 'place', 'district', 'district_display', 'preferred_difficulty',
             'is_owner', 'join_request_status', 'fee_status', 
             'preferred_topics', 'preferred_topics_ids',
             'preferred_exams', 'preferred_exams_ids', 'bio',
@@ -146,6 +147,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
             balance = total_dues - total_paid
             return {'total_fees': total_dues, 'amount_paid': total_paid, 'balance_due': balance}
         return None
+
+    def get_district_display(self, obj):
+        return obj.get_district_display() if obj.district else ''
 
     def validate_preferred_exams_ids(self, value):
         if len(value) > 3:

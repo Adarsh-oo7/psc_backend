@@ -19,7 +19,7 @@ from rest_framework_simplejwt.tokens import RefreshToken
 # Local application imports
 from .models import (
     Exam, Topic, Question, Bookmark, Report, UserProfile, 
-    UserAnswer, ExamCategory, ExamSyllabus
+    UserAnswer, ExamCategory, ExamSyllabus, UserFeedView
 )
 from .serializers import (
     ExamSerializer, TopicSerializer, QuestionSerializer,
@@ -156,7 +156,7 @@ class GoogleSignInView(views.APIView):
         except ValueError as e:
             logger.warning(f"Invalid Google ID token signature or claim: {str(e)}")
             return Response({
-                'error': f'Invalid Google token: {str(e)}',
+                'error': 'Invalid Google token.',
                 'details': {
                     'server_client_id': client_id,
                     'token_preview': f"{credential[:15]}...{credential[-15:]}" if credential else None
@@ -302,7 +302,7 @@ class SubmitAnswerView(generics.CreateAPIView):
         from questionbank.gamification import award_xp, update_streak
         xp_earned = 10 if is_correct else 2
         _, level_up, new_level = award_xp(request.user, xp_earned)
-        current_streak, longest_streak, freeze_used = update_streak(request.user)
+        current_streak, longest_streak, freeze_used, streak_promo_awarded = update_streak(request.user)
         
         response_data = serializer.data
         response_data['gamification'] = {
@@ -311,7 +311,8 @@ class SubmitAnswerView(generics.CreateAPIView):
             'new_level': new_level,
             'current_streak': current_streak,
             'longest_streak': longest_streak,
-            'freeze_used': freeze_used
+            'freeze_used': freeze_used,
+            'streak_promo_awarded': streak_promo_awarded
         }
         return Response(response_data, status=status.HTTP_201_CREATED)
 
@@ -363,7 +364,7 @@ class SubmitExamView(views.APIView):
         from questionbank.gamification import award_xp, update_streak
         xp_earned = (correct_count * 10) + (wrong_count * 2) + 50
         _, level_up, new_level = award_xp(request.user, xp_earned)
-        current_streak, longest_streak, freeze_used = update_streak(request.user)
+        current_streak, longest_streak, freeze_used, streak_promo_awarded = update_streak(request.user)
 
         response_data = {
             'results': {
@@ -380,7 +381,8 @@ class SubmitExamView(views.APIView):
                 'new_level': new_level,
                 'current_streak': current_streak,
                 'longest_streak': longest_streak,
-                'freeze_used': freeze_used
+                'freeze_used': freeze_used,
+                'streak_promo_awarded': streak_promo_awarded
             }
         }
 
@@ -753,7 +755,7 @@ class SubmitDailyExamView(APIView):
             from questionbank.gamification import award_xp, update_streak
             xp_earned = (correct_count * 10) + 50
             _, level_up, new_level = award_xp(request.user, xp_earned)
-            current_streak, longest_streak, freeze_used = update_streak(request.user)
+            current_streak, longest_streak, freeze_used, streak_promo_awarded = update_streak(request.user)
 
             return Response({
                 'score': score, 
@@ -765,7 +767,8 @@ class SubmitDailyExamView(APIView):
                     'new_level': new_level,
                     'current_streak': current_streak,
                     'longest_streak': longest_streak,
-                    'freeze_used': freeze_used
+                    'freeze_used': freeze_used,
+                    'streak_promo_awarded': streak_promo_awarded
                 }
             }, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -846,7 +849,7 @@ class SubmitModelExamView(APIView):
             from questionbank.gamification import award_xp, update_streak
             xp_earned = (correct_count * 10) + 50
             _, level_up, new_level = award_xp(request.user, xp_earned)
-            current_streak, longest_streak, freeze_used = update_streak(request.user)
+            current_streak, longest_streak, freeze_used, streak_promo_awarded = update_streak(request.user)
             
             return Response({
                 'score': score, 
@@ -858,7 +861,8 @@ class SubmitModelExamView(APIView):
                     'new_level': new_level,
                     'current_streak': current_streak,
                     'longest_streak': longest_streak,
-                    'freeze_used': freeze_used
+                    'freeze_used': freeze_used,
+                    'streak_promo_awarded': streak_promo_awarded
                 }
             }, status=status.HTTP_200_OK)
             
@@ -1170,7 +1174,7 @@ class LeaderboardView(views.APIView):
                 'rank': index + 1,
                 'username': p.user.username,
                 'avatar': p.profile_photo.url if p.profile_photo else None,
-                'place': p.place or "Kerala",
+                'place': p.get_district_display() if p.district else (p.place or "Kerala"),
                 'xp': p.total_xp,
                 'streak': p.current_streak,
                 'level': p.level
@@ -1184,17 +1188,17 @@ class LeaderboardView(views.APIView):
         all_kerala_limited = all_kerala[:50]
 
         # 2. District Leaderboard
-        district = profile.place
+        district = profile.district
         district_profiles = []
         user_position_district = None
         if district:
-            dist_profiles = UserProfile.objects.filter(place__iexact=district).select_related('user').order_by('-total_xp', 'id')
+            dist_profiles = UserProfile.objects.filter(district=district).select_related('user').order_by('-total_xp', 'id')
             for index, p in enumerate(dist_profiles):
                 data = {
                     'rank': index + 1,
                     'username': p.user.username,
                     'avatar': p.profile_photo.url if p.profile_photo else None,
-                    'place': p.place,
+                    'place': p.get_district_display() or "Kerala",
                     'xp': p.total_xp,
                     'streak': p.current_streak,
                     'level': p.level
@@ -1220,7 +1224,7 @@ class LeaderboardView(views.APIView):
                     'rank': index + 1,
                     'username': p.user.username,
                     'avatar': p.profile_photo.url if p.profile_photo else None,
-                    'place': p.place or "Kerala",
+                    'place': p.get_district_display() if p.district else (p.place or "Kerala"),
                     'xp': p.total_xp,
                     'streak': p.current_streak,
                     'level': p.level
@@ -1236,15 +1240,41 @@ class LeaderboardView(views.APIView):
 
         batch_limited = batch_profiles[:50]
 
+        # 4. Friends Leaderboard (Symmetrical friends ranking)
+        friend_profiles = UserProfile.objects.filter(
+            Q(id=profile.id) | Q(friends=profile)
+        ).distinct().select_related('user').order_by('-total_xp', 'id')
+        
+        friends_list = []
+        user_position_friends = None
+        for index, p in enumerate(friend_profiles):
+            data = {
+                'rank': index + 1,
+                'username': p.user.username,
+                'avatar': p.profile_photo.url if p.profile_photo else None,
+                'place': p.get_district_display() if p.district else (p.place or "Kerala"),
+                'xp': p.total_xp,
+                'streak': p.current_streak,
+                'level': p.level
+            }
+            friends_list.append(data)
+            if p.user == user:
+                user_position_friends = data
+                user_position_friends['places_gained'] = "+1"
+
+        friends_limited = friends_list[:50]
+
         return Response({
             'all_kerala': all_kerala_limited,
             'district': district_limited,
             'batch': batch_limited,
+            'friends': friends_limited,
             'user_position': user_position_all or {
                 'rank': 0, 'username': user.username, 'avatar': None, 'place': '', 'xp': profile.total_xp, 'streak': profile.current_streak, 'level': profile.level, 'places_gained': "0"
             },
             'user_position_district': user_position_district,
             'user_position_batch': user_position_batch,
+            'user_position_friends': user_position_friends,
         })
 
 
@@ -1696,5 +1726,103 @@ class RejectSubmissionView(views.APIView):
             logger.info(f"Notification: Question {question.id} submitted by {question.submitted_by.username} was rejected.")
             
         return Response({'detail': 'Question rejected successfully.'}, status=status.HTTP_200_OK)
+
+
+class UserActivityView(views.APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        ans_dates = UserAnswer.objects.filter(user=request.user).values_list('answered_at__date', flat=True).distinct()
+        feed_dates = UserFeedView.objects.filter(user=request.user).values_list('viewed_date', flat=True).distinct()
+        
+        all_dates = set()
+        for d in ans_dates:
+            if d:
+                all_dates.add(d.strftime('%Y-%m-%d'))
+        for d in feed_dates:
+            if d:
+                all_dates.add(d.strftime('%Y-%m-%d'))
+                
+        return Response({'activity': sorted(list(all_dates))})
+
+
+class FriendsView(views.APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        profile = request.user.userprofile
+        friends = profile.friends.all().select_related('user')
+        friends_data = []
+        for f in friends:
+            friends_data.append({
+                'username': f.user.username,
+                'profile_photo': request.build_absolute_uri(f.profile_photo.url) if f.profile_photo else None,
+                'district': f.district,
+                'district_display': f.get_district_display() if f.district else '',
+                'place': f.place,
+                'xp': f.total_xp,
+                'level': f.level,
+                'streak': f.current_streak
+            })
+        return Response({'friends': friends_data})
+        
+    def post(self, request):
+        username = request.data.get('username')
+        if not username:
+            return Response({'error': 'username is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if username == request.user.username:
+            return Response({'error': 'You cannot add yourself as a friend.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        friend_user = get_object_or_404(User, username=username)
+        profile = request.user.userprofile
+        friend_profile = friend_user.userprofile
+        
+        profile.friends.add(friend_profile)
+        
+        return Response({
+            'success': True,
+            'message': f"Successfully added {username} as a friend."
+        }, status=status.HTTP_200_OK)
+        
+    def delete(self, request):
+        username = request.data.get('username') or request.query_params.get('username')
+        if not username:
+            return Response({'error': 'username is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        friend_user = get_object_or_404(User, username=username)
+        profile = request.user.userprofile
+        friend_profile = friend_user.userprofile
+        
+        profile.friends.remove(friend_profile)
+        
+        return Response({
+            'success': True,
+            'message': f"Successfully removed {username} as a friend."
+        }, status=status.HTTP_200_OK)
+
+
+class UserSearchView(views.APIView):
+    permission_classes = [IsAuthenticated]
+    
+    def get(self, request):
+        query = request.query_params.get('q', '')
+        if not query:
+            return Response({'users': []})
+            
+        users = User.objects.filter(username__icontains=query).exclude(id=request.user.id)[:10]
+        users_data = []
+        profile = request.user.userprofile
+        current_friends = profile.friends.all().values_list('user_id', flat=True)
+        
+        for u in users:
+            prof, _ = UserProfile.objects.get_or_create(user=u)
+            users_data.append({
+                'username': u.username,
+                'profile_photo': request.build_absolute_uri(prof.profile_photo.url) if prof.profile_photo else None,
+                'district': prof.district,
+                'district_display': prof.get_district_display() if prof.district else '',
+                'is_friend': u.id in current_friends
+            })
+        return Response({'users': users_data})
 
 

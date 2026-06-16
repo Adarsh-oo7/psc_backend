@@ -7,6 +7,9 @@ urlpatterns = [
     path('auth/user/', views.UserView.as_view(), name='user-detail'),
     path('auth/profile/', views.UserProfileView.as_view(), name='user-profile'),
     path('auth/google/', views.GoogleSignInView.as_view(), name='google-login'),
+    path('auth/profile/activity/', views.UserActivityView.as_view(), name='user-activity'),
+    path('friends/', views.FriendsView.as_view(), name='friends-list-create'),
+    path('users/search/', views.UserSearchView.as_view(), name='users-search'),
 
     # --- Public Content URLs ---
     path('exams/', views.ExamListView.as_view(), name='exam-list'),

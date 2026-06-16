@@ -54,13 +54,13 @@ class GamificationTestCase(TestCase):
         self.assertEqual(profile.current_streak, 0)
         
         # 1. First activity
-        current_streak, longest_streak, freeze_used = update_streak(self.user)
+        current_streak, longest_streak, freeze_used, _ = update_streak(self.user)
         self.assertEqual(current_streak, 1)
         self.assertEqual(longest_streak, 1)
         self.assertFalse(freeze_used)
         
         # 2. Active same day: streak remains 1
-        current_streak, longest_streak, freeze_used = update_streak(self.user)
+        current_streak, longest_streak, freeze_used, _ = update_streak(self.user)
         self.assertEqual(current_streak, 1)
         self.assertFalse(freeze_used)
         
@@ -68,7 +68,7 @@ class GamificationTestCase(TestCase):
         profile.last_active_date = timezone.now().date() - timedelta(days=1)
         profile.save()
         
-        current_streak, longest_streak, freeze_used = update_streak(self.user)
+        current_streak, longest_streak, freeze_used, _ = update_streak(self.user)
         self.assertEqual(current_streak, 2)
         self.assertEqual(longest_streak, 2)
         self.assertFalse(freeze_used)
@@ -78,7 +78,7 @@ class GamificationTestCase(TestCase):
         profile.streak_freeze_count = 1
         profile.save()
         
-        current_streak, longest_streak, freeze_used = update_streak(self.user)
+        current_streak, longest_streak, freeze_used, _ = update_streak(self.user)
         self.assertEqual(current_streak, 2) # Preserved
         self.assertTrue(freeze_used)
         
@@ -88,7 +88,7 @@ class GamificationTestCase(TestCase):
         profile.streak_freeze_count = 0
         profile.save()
         
-        current_streak, longest_streak, freeze_used = update_streak(self.user)
+        current_streak, longest_streak, freeze_used, _ = update_streak(self.user)
         self.assertEqual(current_streak, 1) # Reset
         self.assertFalse(freeze_used)
 
