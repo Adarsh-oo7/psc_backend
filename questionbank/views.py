@@ -155,7 +155,13 @@ class GoogleSignInView(views.APIView):
 
         except ValueError as e:
             logger.warning(f"Invalid Google ID token signature or claim: {str(e)}")
-            return Response({'error': 'Invalid Google token.'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({
+                'error': f'Invalid Google token: {str(e)}',
+                'details': {
+                    'server_client_id': client_id,
+                    'token_preview': f"{credential[:15]}...{credential[-15:]}" if credential else None
+                }
+            }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.exception("Unexpected error during Google Sign-In.")
             return Response({'error': 'Internal server error.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
