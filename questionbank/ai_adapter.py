@@ -54,25 +54,27 @@ def get_ai_explanation(question, language='en'):
                 explanation_text = data['candidates'][0]['content']['parts'][0]['text']
         except Exception as e:
             # Fall back to mock on failure
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Gemini API explanation generation failed: {str(e)}")
             explanation_text = f"Failed to fetch AI explanation: {str(e)}"
 
-    # If no api key or API call failed/skipped, return a high-quality mock explanation
+    # If no api key or API call failed/skipped, return the built-in explanation or a clean fallback
     if not explanation_text or explanation_text.startswith("Failed to fetch"):
-        correct_opt_text = question.options.get(question.correct_answer, question.correct_answer) if isinstance(question.options, dict) else question.correct_answer
-        if language == 'ml':
-            explanation_text = (
-                f"ശരിയായ ഉത്തരം: {question.correct_answer}) {correct_opt_text}\n\n"
-                f"വിശദീകരണം: ഈ ചോദ്യം കേരള പി.എസ്.സി പരീക്ഷകളിൽ ആവർത്തിച്ചു ചോദിക്കുന്ന ഒന്നാണ്. "
-                f"തന്നിരിക്കുന്ന ചോദ്യത്തിൽ ശരിയായ ഉത്തരം {question.correct_answer} ആണ്. "
-                f"മറ്റു ഓപ്ഷനുകൾ തെറ്റായ വിവരങ്ങളാണ് നൽകുന്നത്."
-            )
+        if question.explanation:
+            explanation_text = question.explanation
         else:
-            explanation_text = (
-                f"Correct Answer: {question.correct_answer}) {correct_opt_text}\n\n"
-                f"Explanation: For the question '{question.text}', the correct answer is option {question.correct_answer}. "
-                f"The option '{correct_opt_text}' accurately represents the facts requested. "
-                f"Other options are factually incorrect or inappropriate contextually."
-            )
+            correct_opt_text = question.options.get(question.correct_answer, question.correct_answer) if isinstance(question.options, dict) else question.correct_answer
+            if language == 'ml':
+                explanation_text = (
+                    f"ശരിയായ ഉത്തരം: {question.correct_answer}) {correct_opt_text}\n\n"
+                    f"വിശദീകരണം: ഈ ചോദ്യത്തിന്റെ ശരിയായ ഉത്തരം {question.correct_answer} ({correct_opt_text}) ആണ്."
+                )
+            else:
+                explanation_text = (
+                    f"Correct Answer: {question.correct_answer}) {correct_opt_text}\n\n"
+                    f"Explanation: The correct answer for this question is option {question.correct_answer} ({correct_opt_text})."
+                )
 
     # 3. Save to Cache
     try:
