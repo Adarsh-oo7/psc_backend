@@ -163,8 +163,14 @@ class GoogleSignInView(views.APIView):
                 }
             }, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            import traceback
             logger.exception("Unexpected error during Google Sign-In.")
-            return Response({'error': 'Internal server error.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response({
+                'error': 'Internal server error.',
+                'exception_type': type(e).__name__,
+                'exception_message': str(e),
+                'traceback': traceback.format_exc()
+            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 # ===================================================================
