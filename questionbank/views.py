@@ -962,12 +962,18 @@ class PublicCurrentAffairsDetailView(generics.RetrieveAPIView):
 
 
 def seed_feed_cards():
-    # If StudyFeedCard is empty, seed a few cards using questions and current affairs
-    import random
+    # Seed new cards using questions and current affairs not already in StudyFeedCard
     from questionbank.models import Question, CurrentAffairs, StudyFeedCard
     
-    # 1. Convert some Questions into cards
-    questions = Question.objects.all().order_by('?')[:10]
+    # 1. Convert new Questions into cards
+    existing_q_ids = []
+    for card in StudyFeedCard.objects.filter(card_type='question'):
+        if isinstance(card.content_data, dict):
+            q_id = card.content_data.get('question_id')
+            if q_id:
+                existing_q_ids.append(q_id)
+                
+    questions = Question.objects.exclude(id__in=existing_q_ids).order_by('?')[:15]
     for q in questions:
         content = {
             'question_id': q.id,
@@ -976,15 +982,22 @@ def seed_feed_cards():
             'correct_answer': q.correct_answer,
             'explanation': q.explanation
         }
-        StudyFeedCard.objects.get_or_create(
+        StudyFeedCard.objects.create(
             card_type='question',
             title=f"Question on {q.topic.name if q.topic else 'General'}",
             content_data=content,
             psc_likelihood_tag='🔥'
         )
         
-    # 2. Convert some Current Affairs into cards
-    ca_items = CurrentAffairs.objects.all().order_by('?')[:5]
+    # 2. Convert new Current Affairs into cards
+    existing_ca_ids = []
+    for card in StudyFeedCard.objects.filter(card_type='current_affairs'):
+        if isinstance(card.content_data, dict):
+            ca_id = card.content_data.get('ca_id')
+            if ca_id:
+                existing_ca_ids.append(ca_id)
+                
+    ca_items = CurrentAffairs.objects.exclude(id__in=existing_ca_ids).order_by('?')[:10]
     for ca in ca_items:
         content = {
             'ca_id': ca.id,
@@ -993,14 +1006,14 @@ def seed_feed_cards():
             'publication_date': ca.publication_date.isoformat() if ca.publication_date else None,
             'ai_summary': ca.ai_summary
         }
-        StudyFeedCard.objects.get_or_create(
+        StudyFeedCard.objects.create(
             card_type='current_affairs',
             title=ca.title,
             content_data=content,
             psc_likelihood_tag='💡'
         )
 
-    # 3. Add some general fun facts for PSC
+    # 3. Add some general fun facts for PSC (only if they don't exist)
     facts = [
         ("Largest District in Kerala", "Palakkad is the largest district in Kerala by area.", "💡"),
         ("Smallest District in Kerala", "Alappuzha is the smallest district in Kerala by area.", "💡"),
@@ -1015,6 +1028,7 @@ def seed_feed_cards():
             content_data={'fact_text': text},
             psc_likelihood_tag=tag
         )
+
 
 from subscriptions.utils import get_user_entitlement
 from questionbank.models import StudyFeedCard, UserFeedView
@@ -1040,8 +1054,11 @@ class StudyFeedView(views.APIView):
                 'cards': []
             }, status=status.HTTP_200_OK)
             
-        # 3. Auto-seed if cards are low
-        if StudyFeedCard.objects.count() < 10:
+        # 3. Auto-seed if unviewed cards for this user today are low
+        viewed_ids = UserFeedView.objects.filter(user=request.user, viewed_date=today).values_list('card_id', flat=True)
+        unviewed_count = StudyFeedCard.objects.exclude(id__in=viewed_ids).count()
+        
+        if unviewed_count < 10:
             try:
                 seed_feed_cards()
             except Exception:
