@@ -4,6 +4,8 @@ from .models import UserAnswer, TopicProgress
 
 @receiver(post_save, sender=UserAnswer)
 def update_topic_progress(sender, instance, created, **kwargs):
+    if kwargs.get('raw'):
+        return
     if not created:
         return
 
