@@ -55,6 +55,8 @@ class RegisterView(generics.CreateAPIView):
             return Response({'error': 'Username, email, and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
         if User.objects.filter(username=username).exists():
             return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(email=email).exists():
+            return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
         
         user = User.objects.create_user(
             username=username, 
@@ -117,9 +119,8 @@ class GoogleSignInView(views.APIView):
             last_name = idinfo.get('family_name', '')
 
             # Check if user exists by email
-            try:
-                user = User.objects.get(email=email)
-            except User.DoesNotExist:
+            user = User.objects.filter(email=email).first()
+            if not user:
                 # Generate a unique username based on email
                 username_base = email.split('@')[0]
                 username = username_base
