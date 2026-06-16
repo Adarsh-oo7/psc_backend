@@ -181,7 +181,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
 
 from rest_framework import serializers
-from .models import Questions, DailyExam
+from .models import Question, DailyExam
 import json
 import csv
 from io import StringIO
@@ -189,10 +189,9 @@ from django.core.exceptions import ValidationError
 
 class QuestionsSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Questions
+        model = Question
         fields = [
-            'id', 'question_text', 'option_a', 'option_b', 'option_c', 'option_d',
-            'correct_answer', 'explanation'
+            'id', 'text', 'options', 'correct_answer', 'explanation', 'difficulty'
         ]
 
 class DailyExamSerializer(serializers.ModelSerializer):
@@ -432,5 +431,89 @@ class PYQDetailSerializer(serializers.ModelSerializer):
 
     def get_question_count(self, obj):
         return obj.questions.count()
+
+
+class QuestionSubmissionSerializer(serializers.Serializer):
+    question_text = serializers.CharField(min_length=10)
+    option_a = serializers.CharField()
+    option_b = serializers.CharField()
+    option_c = serializers.CharField()
+    option_d = serializers.CharField()
+    correct_answer = serializers.ChoiceField(choices=['A', 'B', 'C', 'D'])
+    topic_id = serializers.IntegerField()
+    exam_id = serializers.IntegerField(required=False, allow_null=True)
+    explanation = serializers.CharField(required=False, allow_blank=True, default='')
+    language = serializers.ChoiceField(choices=['en', 'ml'], default='en')
+
+    def validate_question_text(self, value):
+        import re
+        import hashlib
+        normalized = re.sub(r'[^\w\s]', '', value).lower().strip()
+        normalized = re.sub(r'\s+', ' ', normalized)
+        text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+        if Question.objects.filter(text_hash=text_hash).exists():
+            raise serializers.ValidationError("This question already exists")
+        return value
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = request.user if request else None
+
+        # Map options
+        options_dict = {
+            'A': validated_data['option_a'],
+            'B': validated_data['option_b'],
+            'C': validated_data['option_c'],
+            'D': validated_data['option_d']
+        }
+
+        topic = Topic.objects.get(id=validated_data['topic_id'])
+        
+        q = Question.objects.create(
+            text=validated_data['question_text'],
+            options=options_dict,
+            correct_answer=validated_data['correct_answer'],
+            topic=topic,
+            explanation=validated_data.get('explanation', ''),
+            language=validated_data.get('language', 'en'),
+            status='pending',
+            source='community',
+            submitted_by=user
+        )
+
+        exam_id = validated_data.get('exam_id')
+        if exam_id:
+            try:
+                exam = Exam.objects.get(id=exam_id)
+                q.exams.add(exam)
+            except Exam.DoesNotExist:
+                pass
+
+        return q
+
+
+class UserSubmissionSerializer(serializers.ModelSerializer):
+    option_a = serializers.SerializerMethodField()
+    option_b = serializers.SerializerMethodField()
+    option_c = serializers.SerializerMethodField()
+    option_d = serializers.SerializerMethodField()
+    topic_name = serializers.CharField(source='topic.name', read_only=True)
+
+    class Meta:
+        model = Question
+        fields = [
+            'id', 'text', 'option_a', 'option_b', 'option_c', 'option_d',
+            'correct_answer', 'topic_name', 'explanation', 'language', 'status'
+        ]
+
+    def get_option_a(self, obj):
+        return obj.options.get('A', '')
+    def get_option_b(self, obj):
+        return obj.options.get('B', '')
+    def get_option_c(self, obj):
+        return obj.options.get('C', '')
+    def get_option_d(self, obj):
+        return obj.options.get('D', '')
+
 
 

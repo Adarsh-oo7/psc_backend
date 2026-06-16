@@ -6,12 +6,20 @@ urlpatterns = [
     path('auth/register/', views.RegisterView.as_view(), name='register'),
     path('auth/user/', views.UserView.as_view(), name='user-detail'),
     path('auth/profile/', views.UserProfileView.as_view(), name='user-profile'),
+    path('auth/google/', views.GoogleSignInView.as_view(), name='google-login'),
 
     # --- Public Content URLs ---
     path('exams/', views.ExamListView.as_view(), name='exam-list'),
     path('topics/', views.TopicListView.as_view(), name='topic-list'),
     path('questions/', views.QuestionListView.as_view(), name='question-list'),
     path('questions/daily/', views.DailyQuestionView.as_view(), name='daily-question'),
+    path('questions/daily-quiz/', views.DailyQuizView.as_view(), name='daily-quiz'),
+    path('questions/weak-areas/', views.WeakAreaQuestionsView.as_view(), name='weak-area-questions'),
+    path('questions/submit/', views.SubmitQuestionView.as_view(), name='submit-question'),
+    path('questions/my-submissions/', views.MySubmissionsListView.as_view(), name='my-submissions'),
+    path('questions/pending/', views.PendingSubmissionsListView.as_view(), name='pending-submissions'),
+    path('questions/<int:pk>/approve/', views.ApproveSubmissionView.as_view(), name='approve-submission'),
+    path('questions/<int:pk>/reject/', views.RejectSubmissionView.as_view(), name='reject-submission'),
     
     # --- Public SEO URLs ---
     path('public/questions/<slug:slug>/', views.PublicQuestionDetailView.as_view(), name='public-question-detail'),

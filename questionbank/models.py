@@ -52,9 +52,15 @@ class Question(models.Model):
     options = models.JSONField()
     correct_answer = models.CharField(max_length=1)
     explanation = models.TextField(blank=True)
+    
+    DIFFICULTY_CHOICES = [
+        ('easy', 'Easy'),
+        ('medium', 'Medium'),
+        ('hard', 'Hard'),
+    ]
     difficulty = models.CharField(
         max_length=20,
-        choices=[('easy', 'Easy'), ('medium', 'Medium'), ('hard', 'Hard')],
+        choices=DIFFICULTY_CHOICES,
         default='medium'
     )
     institute = models.ForeignKey(
@@ -65,6 +71,78 @@ class Question(models.Model):
         related_name='questions_institute'
     )
     
+    year = models.PositiveIntegerField(null=True, blank=True, help_text="Year this question appeared in exam")
+    
+    LANGUAGE_CHOICES = [
+        ('en', 'English'),
+        ('ml', 'Malayalam'),
+    ]
+    language = models.CharField(max_length=5, choices=LANGUAGE_CHOICES, default='en')
+    
+    tags = models.JSONField(default=list, help_text="['freedom_struggle','gandhi'] for SEO tagging")
+    is_verified = models.BooleanField(default=False, help_text="Admin-verified question")
+    
+    SOURCE_CHOICES = [
+        ('psc_official', 'PSC Official'),
+        ('rank_file', 'Rank File'),
+        ('ai_generated', 'AI Generated'),
+        ('community', 'Community'),
+        ('manual', 'Manual'),
+    ]
+    source = models.CharField(max_length=50, choices=SOURCE_CHOICES, default='manual', blank=True)
+    
+    times_answered = models.PositiveIntegerField(default=0, db_index=True)
+    times_correct = models.PositiveIntegerField(default=0)
+    
+    # --- Prompt 1: New fields ---
+    text_hash = models.CharField(max_length=64, unique=True, db_index=True, null=True, blank=True)
+    ai_explanation = models.TextField(blank=True)
+    verified = models.BooleanField(default=False)
+    times_appeared = models.PositiveIntegerField(default=1)
+    is_public = models.BooleanField(default=True)
+    submitted_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL)
+    
+    STATUS_CHOICES = [
+        ('approved', 'Approved'),
+        ('pending', 'Pending'),
+        ('rejected', 'Rejected'),
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='approved')
+
+    @property
+    def global_accuracy(self):
+        if self.times_answered == 0:
+            return None
+        return round((self.times_correct / self.times_answered) * 100, 1)
+
+    def save(self, *args, **kwargs):
+        import re
+        import hashlib
+        from django.utils.text import slugify
+        import uuid
+
+        # Normalize text: lowercase, remove punctuation, strip
+        normalized = re.sub(r'[^\w\s]', '', self.text).lower().strip()
+        normalized = re.sub(r'\s+', ' ', normalized)
+        
+        # Calculate SHA-256 hash
+        self.text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+        # Generate slug from first 8 words
+        if not self.slug:
+            words = self.text.split()[:8]
+            base_slug = slugify(' '.join(words))
+            if not base_slug:
+                base_slug = 'question'
+            
+            slug = base_slug[:100]
+            while Question.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                suffix = f"-{uuid.uuid4().hex[:6]}"
+                slug = f"{base_slug[:100-len(suffix)]}{suffix}"
+            self.slug = slug
+
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.text[:50]
 # ===================================================================
@@ -95,7 +173,23 @@ class UserProfile(models.Model):
     last_active_date = models.DateField(null=True, blank=True)
     streak_freeze_count = models.PositiveIntegerField(default=0)
     
+    phone_number = models.CharField(max_length=15, blank=True)
+    target_exam_date = models.DateField(null=True, blank=True)
+    subscription_plan = models.ForeignKey(
+        'subscriptions.Plan', on_delete=models.SET_NULL, null=True, blank=True
+    )
+    subscription_end_date = models.DateField(null=True, blank=True)
+    is_premium = models.BooleanField(default=False)
+    referral_code = models.CharField(max_length=10, unique=True, null=True, blank=True)
+    referred_by = models.ForeignKey(
+        'self', on_delete=models.SET_NULL, null=True, blank=True
+    )
 
+    def save(self, *args, **kwargs):
+        if not self.referral_code:
+            import random, string
+            self.referral_code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.user.username
@@ -133,25 +227,9 @@ class Report(models.Model):
 
 from django.db import models
 
-class Questions(models.Model):
-    question_text = models.TextField(verbose_name="Question")
-    option_a = models.CharField(max_length=255, verbose_name="Option A")
-    option_b = models.CharField(max_length=255, verbose_name="Option B")
-    option_c = models.CharField(max_length=255, blank=True, verbose_name="Option C")
-    option_d = models.CharField(max_length=255, blank=True, verbose_name="Option D")
-    correct_answer = models.CharField(
-        max_length=1,
-        choices=[('A', 'A'), ('B', 'B'), ('C', 'C'), ('D', 'D')],
-        verbose_name="Correct Answer"
-    )
-    explanation = models.TextField(blank=True, verbose_name="Explanation")
-
-    def __str__(self):
-        return self.question_text[:70]
-
 class DailyExam(models.Model):
     date = models.DateField(unique=True)
-    questions = models.ManyToManyField(Questions, blank=True, related_name='daily_exams')
+    questions = models.ManyToManyField(Question, blank=True, related_name='daily_exams')
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

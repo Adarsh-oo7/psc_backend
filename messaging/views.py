@@ -115,7 +115,7 @@ class PublicGroupListView(generics.ListAPIView):
     permission_classes = [AllowAny] # Anyone can search for groups
 
     def get_queryset(self):
-        queryset = Group.objects.filter(is_premium=False)
+        queryset = Group.objects.all()
         name_query = self.request.query_params.get('name')
         if name_query:
             queryset = queryset.filter(name__icontains=name_query)

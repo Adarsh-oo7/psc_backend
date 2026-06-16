@@ -41,10 +41,12 @@ class TopicAdmin(admin.ModelAdmin):
 
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
-    list_display = ('text', 'display_exams', 'topic', 'sub_topic', 'difficulty')
-    list_filter = ('exams', 'topic', 'difficulty', 'institute')
+    list_display = ('text', 'display_exams', 'topic', 'sub_topic', 'difficulty', 'status', 'source', 'verified', 'is_verified')
+    list_filter = ('status', 'source', 'verified', 'is_verified', 'exams', 'topic', 'difficulty', 'institute')
     search_fields = ('text',)
     filter_horizontal = ('exams',)
+    readonly_fields = ('text_hash',)
+    actions = ['approve_questions', 'reject_questions']
 
     fieldsets = (
         ('Core Details', {'fields': ('text', 'topic', 'sub_topic')}),
@@ -53,7 +55,45 @@ class QuestionAdmin(admin.ModelAdmin):
             'description': """<p style="font-size: 1.1em;"><strong>Options Format:</strong> Please enter the options as a valid JSON object.</p><p>Example:</p><pre><code>{\n  "A": "Option text 1",\n  "B": "Option text 2",\n  "C": "Option text 3",\n  "D": "Option text 4"\n}</code></pre>"""
         }),
         ('Categorization & Difficulty', {'fields': ('difficulty', 'exams', 'institute')}),
+        ('Submission Info', {'fields': ('submitted_by', 'status', 'source', 'verified', 'is_verified', 'text_hash')}),
     )
+
+    def approve_questions(self, request, queryset):
+        from questionbank.gamification import award_xp
+        count = 0
+        for question in queryset:
+            if question.status != 'approved':
+                question.status = 'approved'
+                question.verified = True
+                question.is_verified = True
+                question.save()
+                count += 1
+                
+                # Award XP if submitted by a user
+                if question.submitted_by:
+                    award_xp(question.submitted_by, 100)
+                    approved_count = Question.objects.filter(
+                        submitted_by=question.submitted_by,
+                        status='approved'
+                    ).count()
+                    if approved_count >= 10:
+                        profile = question.submitted_by.userprofile
+                        if not profile.is_content_creator:
+                            profile.is_content_creator = True
+                            profile.save(update_fields=['is_content_creator'])
+        self.message_user(request, f"Successfully approved {count} questions.")
+    approve_questions.short_description = "Approve selected questions"
+
+    def reject_questions(self, request, queryset):
+        count = 0
+        for question in queryset:
+            if question.status != 'rejected':
+                question.status = 'rejected'
+                question.save()
+                count += 1
+        self.message_user(request, f"Successfully rejected {count} questions.")
+    reject_questions.short_description = "Reject selected questions"
+    
 
     def display_exams(self, obj):
         return ", ".join([exam.name for exam in obj.exams.all()])
@@ -512,61 +552,8 @@ from django.contrib import admin
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from .models import Questions,DailyExam
-from .views import BulkUploadView
-
-
-@admin.register(Questions)
-class QuestionsAdmin(admin.ModelAdmin):
-    list_display = ('question_text', 'correct_answer', 'option_a', 'option_b')
-    search_fields = ('question_text',)
-    list_filter = ('correct_answer',)
-
-    def get_urls(self):
-        urls = super().get_urls()
-        custom_urls = [
-            path('text-upload/', self.text_upload_view, name='questions_text_upload'),
-        ]
-        return custom_urls + urls
-
-    def text_upload_view(self, request):
-        if request.method == 'POST':
-            text_data = request.POST.get('text_data', '').strip()
-
-            if not text_data:
-                messages.error(request, 'Please paste some text.')
-                return self.render_upload_page(request)
-
-            try:
-                bulk_view = BulkUploadView()
-                result = bulk_view.process_questions_text(text_data)
-                success = len(result['created_questions'])
-                failed = len(result['errors'])
-
-                if success:
-                    messages.success(request, f'Successfully uploaded {success} questions.')
-                if failed:
-                    messages.warning(request, f'{failed} lines failed. Errors: {"; ".join(result["errors"][:5])}')
-                return redirect('..')
-
-            except Exception as e:
-                messages.error(request, f'Upload failed: {e}')
-
-        return self.render_upload_page(request)
-
-    def render_upload_page(self, request):
-        return render(request, 'admin/text_upload.html', {
-            'title': 'Upload Questions via Text',
-            'opts': self.model._meta,
-        })
-
-# admin.py
-from django.contrib import admin
-from django.urls import path
-from django.shortcuts import render, redirect
-from django.contrib import messages
 from django.utils import timezone
-from .models import DailyExam, Questions # CORRECTED: Use the correct model name 'Questions'
+from .models import DailyExam, Question, Topic
 
 @admin.register(DailyExam)
 class DailyExamAdmin(admin.ModelAdmin):
@@ -599,18 +586,22 @@ class DailyExamAdmin(admin.ModelAdmin):
             try:
                 lines = text_data.strip().split('\n')
                 created_questions = []
+                default_topic = Topic.objects.get_or_create(name="General", defaults={'slug': 'general'})[0]
                 for line in lines:
                     parts = [p.strip() for p in line.split('|')]
                     if len(parts) >= 6:
-                        # CORRECTED: Use the correct model name 'Questions'
-                        question = Questions.objects.create(
-                            question_text=parts[0],
-                            option_a=parts[1],
-                            option_b=parts[2],
-                            option_c=parts[3],
-                            option_d=parts[4],
+                        question = Question.objects.create(
+                            text=parts[0],
+                            options={
+                                'A': parts[1],
+                                'B': parts[2],
+                                'C': parts[3],
+                                'D': parts[4],
+                            },
                             correct_answer=parts[5].upper(),
-                            explanation=parts[6] if len(parts) > 6 else ''
+                            explanation=parts[6] if len(parts) > 6 else '',
+                            topic=default_topic,
+                            difficulty='medium'
                         )
                         created_questions.append(question)
                 

@@ -1,6 +1,6 @@
 # --- Imports ---
 from rest_framework import generics, status, views
-from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.permissions import IsAuthenticated, AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.exceptions import ValidationError, PermissionDenied
 from django.contrib.auth import get_user_model
@@ -10,6 +10,12 @@ from django.shortcuts import get_object_or_404
 from random import choice, shuffle
 import logging
 
+# Google OAuth & SimpleJWT Imports
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from django.conf import settings
+from rest_framework_simplejwt.tokens import RefreshToken
+
 # Local application imports
 from .models import (
     Exam, Topic, Question, Bookmark, Report, UserProfile, 
@@ -18,7 +24,8 @@ from .models import (
 from .serializers import (
     ExamSerializer, TopicSerializer, QuestionSerializer,
     BookmarkSerializer, ReportSerializer, UserSerializer, 
-    UserProfileSerializer, UserAnswerSerializer, ExamCategorySerializer
+    UserProfileSerializer, UserAnswerSerializer, ExamCategorySerializer,
+    QuestionSubmissionSerializer, UserSubmissionSerializer
 )
 
 # Cross-application imports
@@ -76,6 +83,84 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
         return profile
 
 
+class GoogleSignInView(views.APIView):
+    """Handles Google OAuth2 Sign-In and creates/logs in users."""
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        credential = request.data.get('credential')
+        if not credential:
+            return Response({'error': 'Credential token is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        client_id = getattr(settings, 'GOOGLE_CLIENT_ID', None)
+        if not client_id:
+            logger.error("GOOGLE_CLIENT_ID is not configured in Django settings.")
+            return Response({'error': 'Google Sign-In is not configured on the server.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        try:
+            # Verify Google ID Token
+            idinfo = id_token.verify_oauth2_token(
+                credential,
+                google_requests.Request(),
+                client_id
+            )
+
+            # Check issuer
+            if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                return Response({'error': 'Invalid token issuer.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            email = idinfo.get('email')
+            if not email:
+                return Response({'error': 'Email not provided by Google.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            first_name = idinfo.get('given_name', '')
+            last_name = idinfo.get('family_name', '')
+
+            # Check if user exists by email
+            try:
+                user = User.objects.get(email=email)
+            except User.DoesNotExist:
+                # Generate a unique username based on email
+                username_base = email.split('@')[0]
+                username = username_base
+                counter = 1
+                while User.objects.filter(username=username).exists():
+                    username = f"{username_base}{counter}"
+                    counter += 1
+
+                user = User.objects.create_user(
+                    username=username,
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name
+                )
+                user.set_unusable_password()
+                user.save()
+
+            # Ensure profile exists
+            profile, _ = UserProfile.objects.get_or_create(user=user)
+
+            # Generate SimpleJWT tokens
+            refresh = RefreshToken.for_user(user)
+            has_preferred_exams = profile.preferred_exams.exists()
+
+            logger.info(f"User {user.username} authenticated successfully via Google Sign-In.")
+
+            return Response({
+                'access': str(refresh.access_token),
+                'refresh': str(refresh),
+                'has_preferred_exams': has_preferred_exams,
+                'user': UserSerializer(user).data
+            }, status=status.HTTP_200_OK)
+
+        except ValueError as e:
+            logger.warning(f"Invalid Google ID token signature or claim: {str(e)}")
+            return Response({'error': 'Invalid Google token.'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception("Unexpected error during Google Sign-In.")
+            return Response({'error': 'Internal server error.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 # ===================================================================
 # --- PUBLIC & TENANT-AWARE CONTENT VIEWS ---
 # ===================================================================
@@ -102,58 +187,72 @@ class TopicListView(generics.ListAPIView):
 class QuestionListView(generics.ListAPIView):
     """
     Lists questions available to the user.
-    - Can be filtered by `exam_id` or `topic_id`.
-    - Can be limited to a random subset using the `limit` parameter for Quiz Mode.
+    - Can be filtered by `exam_id` or `topic_id` or `difficulty`.
+    - Integrates with QuestionEngine to provide personalized anti-repetition.
     """
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
         user = self.request.user
-        
-        # Start with a base of questions that are "Global" (have no institute)
-        base_query = Q(institute__isnull=True)
+        filters = {}
 
-        # If the user is logged in and belongs to an institute, also include that institute's private questions
-        if user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile.institute:
-            base_query |= Q(institute=user.userprofile.institute)
-        
-        allowed_questions = Question.objects.filter(base_query)
-        
-        # Apply filters from the URL query parameters
         exam_id = self.request.query_params.get('exam_id')
         if exam_id:
-            # Correctly filter across the 'exams' many-to-many relationship
-            allowed_questions = allowed_questions.filter(exams__id=exam_id)
-        
+            filters['exam_id'] = exam_id
+
         topic_id = self.request.query_params.get('topic_id')
         if topic_id:
-            allowed_questions = allowed_questions.filter(topic_id=topic_id)
-        
-        # This is the logic that enables both Study Mode and Quiz Mode
+            filters['topic_id'] = topic_id
+
+        difficulty = self.request.query_params.get('difficulty')
+        if difficulty:
+            filters['difficulty'] = difficulty
+
         limit = self.request.query_params.get('limit')
-        if limit and limit.isdigit():
-            # For Quiz Mode: order randomly and take the specified number of questions
-            return allowed_questions.order_by('?')[:int(limit)]
-            
-        # For Study Mode (no limit specified): return all matching questions
-        return allowed_questions.distinct()
-    
-    
+        limit_val = int(limit) if limit and limit.isdigit() else None
+
+        from .engine import QuestionEngine
+        return QuestionEngine.get_questions_for_user(user, filters, limit_val)
+
 
 class DailyQuestionView(views.APIView):
-    """Provides a single random question for a daily quiz."""
+    """Provides a single random personalized question for a daily quiz using the engine."""
     permission_classes = [AllowAny]
     def get(self, request):
         user = request.user
-        base_query = Q(institute__isnull=True)
-        if user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile.institute:
-            base_query |= Q(institute=user.userprofile.institute)
-        questions_pool = Question.objects.filter(base_query)
-        if not questions_pool.exists():
+        from .engine import QuestionEngine
+        qs = QuestionEngine.get_daily_quiz(user, limit=1)
+        if not qs.exists():
             return Response({'error': 'No questions available'}, status=status.HTTP_404_NOT_FOUND)
-        question = choice(list(questions_pool))
-        return Response(QuestionSerializer(question).data)
+        question = qs.first()
+        return Response(QuestionSerializer(question, context={'request': request}).data)
+
+
+class DailyQuizView(views.APIView):
+    """Provides today's daily quiz questions — unique per user per day."""
+    permission_classes = [AllowAny]
+    def get(self, request):
+        user = request.user
+        limit = request.query_params.get('limit', '10')
+        limit_val = int(limit) if limit and limit.isdigit() else 10
+        from .engine import QuestionEngine
+        qs = QuestionEngine.get_daily_quiz(user, limit=limit_val)
+        serializer = QuestionSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
+class WeakAreaQuestionsView(generics.ListAPIView):
+    """Lists questions from topics where user accuracy is below 50%."""
+    serializer_class = QuestionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        user = self.request.user
+        limit = self.request.query_params.get('limit', '20')
+        limit_val = int(limit) if limit and limit.isdigit() else 20
+        from .engine import QuestionEngine
+        return QuestionEngine.get_weak_area_questions(user, limit=limit_val)
 
 
 # ===================================================================
@@ -557,7 +656,7 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.views import View
 from django.http import JsonResponse
-from .models import DailyExam, Questions
+from .models import DailyExam, Question
 from .serializers import DailyExamSerializer
 import json
 import csv
@@ -573,15 +672,15 @@ class DailyExamListView(generics.ListAPIView):
     serializer_class = DailyExamSerializer
     permission_classes = [AllowAny]
     queryset = DailyExam.objects.all().order_by('-date')[:20]
-# views.py
-# views.py
-from .models import Questions
+
+from .models import Topic
 
 class BulkUploadView:
     def process_questions_text(self, text_data):
         created_questions = []
         errors = []
         lines = text_data.strip().split('\n')
+        default_topic = Topic.objects.get_or_create(name="General", defaults={'slug': 'general'})[0]
 
         for line in lines:
             try:
@@ -590,14 +689,18 @@ class BulkUploadView:
                     errors.append(f"Incomplete line: {line}")
                     continue
 
-                q = Questions.objects.create(
-                    question_text=parts[0],
-                    option_a=parts[1],
-                    option_b=parts[2],
-                    option_c=parts[3],
-                    option_d=parts[4],
+                q = Question.objects.create(
+                    text=parts[0],
+                    options={
+                        'A': parts[1],
+                        'B': parts[2],
+                        'C': parts[3],
+                        'D': parts[4],
+                    },
                     correct_answer=parts[5].upper(),
-                    explanation=parts[6] if len(parts) > 6 else ''
+                    explanation=parts[6] if len(parts) > 6 else '',
+                    topic=default_topic,
+                    difficulty='medium'
                 )
                 created_questions.append(q)
 
@@ -1293,25 +1396,33 @@ class PracticeStartView(generics.CreateAPIView):
         difficulty = request.data.get('difficulty')
         count = int(request.data.get('count', 10))
         session_type = request.data.get('session_type', 'topic')
-        
+
         user = request.user
-        base_query = Q(institute__isnull=True)
-        if hasattr(user, 'userprofile') and user.userprofile.institute:
-            base_query |= Q(institute=user.userprofile.institute)
-            
-        qs = Question.objects.filter(base_query)
+
+        # Determine topic
         topic = None
         if topic_slug:
             topic = get_object_or_404(Topic, slug=topic_slug)
-            qs = qs.filter(topic=topic)
-            
-        if difficulty in ('easy', 'medium', 'hard'):
-            qs = qs.filter(difficulty=difficulty)
-            
-        questions_list = list(qs.distinct().order_by('?')[:count])
+
+        from .engine import QuestionEngine
+
+        if session_type == 'weak_area':
+            # Drill weak areas
+            questions_queryset = QuestionEngine.get_weak_area_questions(user, limit=count)
+        else:
+            # Build filters
+            filters = {}
+            if topic:
+                filters['topic_id'] = topic.id
+            if difficulty in ('easy', 'medium', 'hard'):
+                filters['difficulty'] = difficulty
+
+            questions_queryset = QuestionEngine.get_questions_for_user(user, filters, limit=count)
+
+        questions_list = list(questions_queryset)
         if not questions_list:
             return Response({"error": "No questions found matching your criteria."}, status=404)
-            
+
         session = PracticeSession.objects.create(
             user=user,
             session_type=session_type,
@@ -1319,13 +1430,13 @@ class PracticeStartView(generics.CreateAPIView):
             difficulty=difficulty or '',
             total_questions=len(questions_list)
         )
-        
+
         session_answers = [
             SessionAnswer(session=session, question=q)
             for q in questions_list
         ]
         SessionAnswer.objects.bulk_create(session_answers)
-        
+
         serializer = QuestionSerializer(questions_list, many=True, context={'request': request})
         return Response({
             'session_id': session.id,
@@ -1473,4 +1584,94 @@ class TopicSummaryView(generics.ListAPIView):
                     'last_practiced': None
                 })
         return Response(summary)
+
+
+# ===================================================================
+# --- COMMUNITY QUESTION SUBMISSIONS ---
+# ===================================================================
+
+class SubmitQuestionView(generics.CreateAPIView):
+    """Allows authenticated community users to submit new questions."""
+    serializer_class = QuestionSubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        question = serializer.save()
+        response_serializer = UserSubmissionSerializer(question, context={'request': request})
+        return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+
+class MySubmissionsListView(generics.ListAPIView):
+    """Lists submissions of the currently authenticated user."""
+    serializer_class = UserSubmissionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return Question.objects.filter(submitted_by=self.request.user).order_by('-id')
+
+
+class PendingSubmissionsListView(generics.ListAPIView):
+    """Lists pending submissions. Restricted to admins."""
+    serializer_class = UserSubmissionSerializer
+    permission_classes = [IsAdminUser]
+
+    def get_queryset(self):
+        return Question.objects.filter(status='pending').order_by('-id')
+
+
+class ApproveSubmissionView(views.APIView):
+    """Approves a pending question, awarding XP to user."""
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        question = get_object_or_404(Question, pk=pk)
+        if question.status == 'approved':
+            return Response({'detail': 'Question is already approved.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        question.status = 'approved'
+        question.verified = True
+        question.is_verified = True
+        question.save()
+
+        # Award XP if submitted by a user
+        if question.submitted_by:
+            from questionbank.gamification import award_xp
+            award_xp(question.submitted_by, 100)
+            
+            # Check if approved submissions >= 10
+            approved_count = Question.objects.filter(
+                submitted_by=question.submitted_by, 
+                status='approved'
+            ).count()
+            
+            if approved_count >= 10:
+                profile = question.submitted_by.userprofile
+                if not profile.is_content_creator:
+                    profile.is_content_creator = True
+                    profile.save(update_fields=['is_content_creator'])
+                    
+            logger.info(f"Notification: Question {question.id} approved. User {question.submitted_by.username} awarded 100 XP.")
+        
+        return Response({'detail': 'Question approved successfully.'}, status=status.HTTP_200_OK)
+
+
+class RejectSubmissionView(views.APIView):
+    """Rejects a pending question submission."""
+    permission_classes = [IsAdminUser]
+
+    def post(self, request, pk):
+        question = get_object_or_404(Question, pk=pk)
+        if question.status == 'rejected':
+            return Response({'detail': 'Question is already rejected.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        question.status = 'rejected'
+        question.save()
+        
+        if question.submitted_by:
+            logger.info(f"Notification: Question {question.id} submitted by {question.submitted_by.username} was rejected.")
+            
+        return Response({'detail': 'Question rejected successfully.'}, status=status.HTTP_200_OK)
+
 
