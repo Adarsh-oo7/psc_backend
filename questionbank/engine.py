@@ -27,7 +27,24 @@ class QuestionEngine:
 
         # Apply content filters
         if filters.get('exam_id'):
-            queryset = queryset.filter(exams__id=filters['exam_id'])
+            exam_id = filters['exam_id']
+            exam_qs = queryset.filter(exams__id=exam_id)
+            if not exam_qs.exists():
+                from .models import Exam
+                exam = Exam.objects.filter(id=exam_id).first()
+                if exam:
+                    words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+                    similar_exams = Exam.objects.none()
+                    if words:
+                        q_obj = Q()
+                        for word in words:
+                            q_obj |= Q(name__icontains=word)
+                        similar_exams = Exam.objects.filter(q_obj).exclude(id=exam_id)
+                    if similar_exams.exists():
+                        exam_qs = queryset.filter(exams__in=similar_exams)
+                    if not exam_qs.exists() and exam.category:
+                        exam_qs = queryset.filter(exams__category=exam.category)
+            queryset = exam_qs
         if filters.get('topic_id'):
             queryset = queryset.filter(topic_id=filters['topic_id'])
         if filters.get('topic_ids'):

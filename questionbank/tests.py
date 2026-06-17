@@ -472,6 +472,18 @@ class QuestionEngineTestCase(APITestCase):
         for q in response.data['questions']:
             self.assertEqual(q['topic'], self.topic1.name)
 
+    def test_exam_fallback(self):
+        from questionbank.engine import QuestionEngine
+        empty_exam = Exam.objects.create(name='Polity Advanced Exam (2024)', slug='polity-adv-2024', year=2024)
+        similar_exam = Exam.objects.create(name='Polity Advanced (2025)', slug='polity-adv-2025', year=2025)
+        for q in self.questions[:3]:
+            q.exams.add(similar_exam)
+            
+        qs = QuestionEngine.get_questions_for_user(self.user, filters={'exam_id': empty_exam.id}, limit=5)
+        self.assertEqual(qs.count(), 3)
+        for q in qs:
+            self.assertIn(q, self.questions[:3])
+
 
 from questionbank.utils import find_similar_questions
 
