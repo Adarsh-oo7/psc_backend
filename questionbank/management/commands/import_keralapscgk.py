@@ -8,6 +8,86 @@ from django.utils.text import slugify
 from questionbank.models import Question, Topic, Exam, ExamCategory
 
 
+def extract_options_and_answer(q_text, ans_text):
+    patterns = [
+        r'\[1\]\s*(.+?)\s*\[2\]\s*(.+?)\s*\[3\]\s*(.+?)\s*\[4\]\s*(.+?)(?:\s*\[5\]\s*(.+?))?\s*$',
+        r'\[a\]\s*(.+?)\s*\[b\]\s*(.+?)\s*\[c\]\s*(.+?)\s*\[d\]\s*(.+?)(?:\s*\[e\]\s*(.+?))?\s*$',
+        r'\([1]\)\s*(.+?)\s*\([2]\)\s*(.+?)\s*\([3]\)\s*(.+?)\s*\([4]\)\s*(.+?)(?:\s*\([5]\)\s*(.+?))?\s*$',
+        r'\([aA]\)\s*(.+?)\s*\([bB]\)\s*(.+?)\s*\([cC]\)\s*(.+?)\s*\([dD]\)\s*(.+?)(?:\s*\([eE]\)\s*(.+?))?\s*$',
+        r'1\)\s*(.+?)\s*2\)\s*(.+?)\s*3\)\s*(.+?)\s*4\)\s*(.+?)(?:\s*5\)\s*(.+?))?\s*$',
+        r'[aA]\)\s*(.+?)\s*[bB]\)\s*(.+?)\s*[cC]\)\s*(.+?)\s*[dD]\)\s*(.+?)(?:\s*[eE]\)\s*(.+?))?\s*$',
+        r'1\.\s*(.+?)\s*2\.\s*(.+?)\s*3\.\s*(.+?)\s*4\.\s*(.+?)(?:\s*5\.\s*(.+?))?\s*$',
+        r'\b[aA]\.\s*(.+?)\s*\b[bB]\.\s*(.+?)\s*\b[cC]\.\s*(.+?)\s*\b[dD]\.\s*(.+?)(?:\s*\b[eE]\.\s*(.+?))?\s*$',
+    ]
+    
+    clean_q = q_text
+    options = {}
+    correct_letter = 'A'
+    
+    found_pattern = False
+    opt_list = []
+    
+    for pat in patterns:
+        m = re.search(pat, q_text, re.IGNORECASE | re.DOTALL)
+        if m:
+            opt_list = [m.group(1).strip(), m.group(2).strip(), m.group(3).strip(), m.group(4).strip()]
+            clean_q = q_text[:m.start()].strip()
+            # Remove trailing dash/colon/spaces
+            clean_q = re.sub(r'[:\-–\s]+$', '', clean_q).strip()
+            found_pattern = True
+            break
+            
+    if found_pattern:
+        options = {
+            'A': opt_list[0],
+            'B': opt_list[1],
+            'C': opt_list[2],
+            'D': opt_list[3]
+        }
+        
+        ans_clean = ans_text.lower().strip()
+        ans_clean = re.sub(r'^(ans\.|answer|ഉത്തരം)\s*[:\-–]?\s*', '', ans_clean).strip()
+        
+        # Check bracketed/parenthesized option index first
+        m_index = re.search(r'^[\(\[]([1-5a-e])[\)\]]', ans_clean)
+        if not m_index:
+            # Check bare option letter or number followed by boundary
+            m_index = re.search(r'^([1-5a-e])\b', ans_clean)
+            
+        if m_index:
+            key = m_index.group(1)
+            if key in ('1', '2', '3', '4', '5'):
+                idx = int(key) - 1
+                if idx < 4:
+                    correct_letter = ['A', 'B', 'C', 'D'][idx]
+                else:
+                    correct_letter = 'D'
+            else:
+                letter = key.upper()
+                if letter in ('A', 'B', 'C', 'D'):
+                    correct_letter = letter
+                else:
+                    correct_letter = 'D'
+        else:
+            # Substring matching
+            for letter, opt_val in options.items():
+                opt_clean = opt_val.lower().strip()
+                if opt_clean and (opt_clean in ans_clean or ans_clean in opt_clean):
+                    correct_letter = letter
+                    break
+    else:
+        short_correct = ans_text[:50]
+        options = {
+            'A': ans_text,
+            'B': f'Not {short_correct}' if len(ans_text) > 2 else 'Option B',
+            'C': 'None of the above',
+            'D': 'All of the above',
+        }
+        correct_letter = 'A'
+        
+    return clean_q, options, correct_letter
+
+
 class Command(BaseCommand):
     help = "Ingests questions from keralapscgk.com - supports both MCQ and Q&A formats"
 
@@ -284,19 +364,13 @@ class Command(BaseCommand):
                             if not question_text or len(question_text) < 8:
                                 continue
 
-                            # Create MCQ-style options with correct answer as A
-                            short_correct = correct_text[:50]
-                            options_dict = {
-                                'A': correct_text,
-                                'B': f'Not {short_correct}' if len(correct_text) > 2 else 'Option B',
-                                'C': 'None of the above',
-                                'D': 'All of the above',
-                            }
+                            # Extract options and clean answer using the helper function
+                            clean_q, options_dict, correct_answer = extract_options_and_answer(question_text, correct_text)
 
                             parsed_questions.append({
-                                'text': question_text,
+                                'text': clean_q,
                                 'options': options_dict,
-                                'correct_answer': 'A',
+                                'correct_answer': correct_answer,
                             })
 
                     # ================================================
@@ -328,17 +402,13 @@ class Command(BaseCommand):
                             if not question_text or len(question_text) < 8:
                                 continue
 
-                            short_correct = correct_text[:50]
-                            options_dict = {
-                                'A': correct_text,
-                                'B': f'Not {short_correct}' if len(correct_text) > 2 else 'Option B',
-                                'C': 'None of the above',
-                                'D': 'All of the above',
-                            }
+                            # Extract options and clean answer using the helper function
+                            clean_q, options_dict, correct_answer = extract_options_and_answer(question_text, correct_text)
+
                             parsed_questions.append({
-                                'text': question_text,
+                                'text': clean_q,
                                 'options': options_dict,
-                                'correct_answer': 'A',
+                                'correct_answer': correct_answer,
                             })
 
                     # ================================================
@@ -374,17 +444,13 @@ class Command(BaseCommand):
                                 if 'http' in q_text or 'style=' in q_text or len(q_text) < 5:
                                     continue
 
-                                short_correct = correct_text[:50]
-                                options_dict = {
-                                    'A': correct_text,
-                                    'B': f'Not {short_correct}' if len(correct_text) > 2 else 'Option B',
-                                    'C': 'None of the above',
-                                    'D': 'All of the above',
-                                }
+                                # Extract options and clean answer using the helper function
+                                clean_q, options_dict, correct_answer = extract_options_and_answer(q_text, correct_text)
+
                                 parsed_questions.append({
-                                    'text': q_text,
+                                    'text': clean_q,
                                     'options': options_dict,
-                                    'correct_answer': 'A',
+                                    'correct_answer': correct_answer,
                                 })
 
                     # ===========================
