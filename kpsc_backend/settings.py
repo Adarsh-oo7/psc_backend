@@ -43,6 +43,7 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
 # Application definition
 
 INSTALLED_APPS = [
+    'questionbank',
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -51,7 +52,6 @@ INSTALLED_APPS = [
     "django.contrib.staticfiles",
     'corsheaders',
     'rest_framework',
-    'questionbank',
     'institutes',
     'rest_framework_simplejwt',
     'community',
