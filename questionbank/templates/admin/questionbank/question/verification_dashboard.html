@@ -127,6 +127,26 @@
         gap: 6px;
     }
 
+    .search-group {
+        grid-column: span 2;
+    }
+
+    @media (max-width: 640px) {
+        .filter-form {
+            grid-template-columns: 1fr;
+        }
+        .search-group {
+            grid-column: span 1;
+        }
+        .filter-actions {
+            grid-column: span 1 !important;
+            justify-content: stretch !important;
+        }
+        .filter-actions .btn {
+            flex: 1;
+        }
+    }
+
     .form-group label {
         font-weight: 700;
         font-size: 11px;
@@ -566,7 +586,7 @@
     <div class="filter-section">
         <form method="get" class="filter-form">
             <!-- Search Query -->
-            <div class="form-group" style="grid-column: span 2;">
+            <div class="form-group search-group">
                 <label for="q">Search Question Text</label>
                 <input type="text" id="q" name="q" value="{{ search_query }}" placeholder="Search questions..." class="form-control">
             </div>
