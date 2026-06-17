@@ -471,6 +471,9 @@ class Command(BaseCommand):
 
                                 normalized = re.sub(r'[^\w\s]', '', question_text).lower().strip()
                                 normalized = re.sub(r'\s+', ' ', normalized)
+                                if options_dict and isinstance(options_dict, dict):
+                                    opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(options_dict.items()))
+                                    normalized = f"{normalized}||{opts_str}"
                                 text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
                                 if Question.objects.filter(text_hash=text_hash).exists():

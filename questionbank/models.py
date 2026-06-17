@@ -125,6 +125,11 @@ class Question(models.Model):
         normalized = re.sub(r'[^\w\s]', '', self.text).lower().strip()
         normalized = re.sub(r'\s+', ' ', normalized)
         
+        # Incorporate options to prevent collisions on generic questions
+        if self.options and isinstance(self.options, dict):
+            opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(self.options.items()))
+            normalized = f"{normalized}||{opts_str}"
+            
         # Calculate SHA-256 hash
         self.text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 

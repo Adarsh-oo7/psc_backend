@@ -80,8 +80,24 @@ class QuestionForm(forms.ModelForm):
         
         # Duplicate detection (case-insensitive text normalization hash)
         if text:
+            opt_a = cleaned_data.get('option_a')
+            opt_b = cleaned_data.get('option_b')
+            opt_c = cleaned_data.get('option_c')
+            opt_d = cleaned_data.get('option_d')
+            
             normalized = re.sub(r'[^\w\s]', '', text).lower().strip()
             normalized = re.sub(r'\s+', ' ', normalized)
+            
+            if opt_a and opt_b and opt_c and opt_d:
+                options_dict = {
+                    'A': opt_a,
+                    'B': opt_b,
+                    'C': opt_c,
+                    'D': opt_d
+                }
+                opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(options_dict.items()))
+                normalized = f"{normalized}||{opts_str}"
+                
             text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
             
             qs = Question.objects.filter(text_hash=text_hash)

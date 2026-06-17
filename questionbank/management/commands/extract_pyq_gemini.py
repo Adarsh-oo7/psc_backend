@@ -176,21 +176,24 @@ Return ONLY a valid JSON array of objects with the structure:
                     # Retrieve matching topic
                     topic = topics_map.get(topic_slug, general_topic)
 
-                    # Deduplication check using hash
-                    normalized = re.sub(r'[^\w\s]', '', q_text).lower().strip()
-                    normalized = re.sub(r'\s+', ' ', normalized)
-                    text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
-
-                    if Question.objects.filter(text_hash=text_hash).exists():
-                        total_skipped += 1
-                        continue
-
                     options_dict = {
                         'A': opt_a,
                         'B': opt_b,
                         'C': opt_c,
                         'D': opt_d
                     }
+
+                    # Deduplication check using hash
+                    normalized = re.sub(r'[^\w\s]', '', q_text).lower().strip()
+                    normalized = re.sub(r'\s+', ' ', normalized)
+                    if options_dict and isinstance(options_dict, dict):
+                        opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(options_dict.items()))
+                        normalized = f"{normalized}||{opts_str}"
+                    text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+                    if Question.objects.filter(text_hash=text_hash).exists():
+                        total_skipped += 1
+                        continue
 
                     # Create and save question
                     q = Question.objects.create(

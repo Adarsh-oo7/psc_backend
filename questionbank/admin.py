@@ -287,9 +287,18 @@ class QuestionAdmin(admin.ModelAdmin):
                         print(f"Question {question_num}: {text[:50]}...")
                         print(f"Suitable for: '{suitable_for}'")
                         
+                        # Parse options JSON
+                        try:
+                            options = json.loads(options_json)
+                        except json.JSONDecodeError as e:
+                            raise ValueError(f"Invalid JSON format in options: {e}")
+
                         # Calculate text hash to check duplicate
                         normalized = re.sub(r'[^\w\s]', '', text).lower().strip()
                         normalized = re.sub(r'\s+', ' ', normalized)
+                        if options and isinstance(options, dict):
+                            opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(options.items()))
+                            normalized = f"{normalized}||{opts_str}"
                         text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
                         # Check for duplicates using hash or exact match
@@ -308,12 +317,6 @@ class QuestionAdmin(admin.ModelAdmin):
                         if not topic:
                             topic = Topic.objects.create(name=category_name)
                             print(f"Created new topic: {category_name}")
-                        
-                        # Parse options JSON
-                        try:
-                            options = json.loads(options_json)
-                        except json.JSONDecodeError as e:
-                            raise ValueError(f"Invalid JSON format in options: {e}")
                         
                         # Enhanced exam matching logic
                         exams_to_add = []
@@ -704,9 +707,20 @@ class DailyExamAdmin(admin.ModelAdmin):
                     if len(parts) >= 6:
                         text = parts[0]
                         
+                        # Construct options dictionary first
+                        options = {
+                            'A': parts[1],
+                            'B': parts[2],
+                            'C': parts[3],
+                            'D': parts[4],
+                        }
+                        
                         # Calculate text hash to check duplicate
                         normalized = re.sub(r'[^\w\s]', '', text).lower().strip()
                         normalized = re.sub(r'\s+', ' ', normalized)
+                        if options and isinstance(options, dict):
+                            opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(options.items()))
+                            normalized = f"{normalized}||{opts_str}"
                         text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
                         
                         # Check if duplicate question already exists, if so reuse it
@@ -714,12 +728,7 @@ class DailyExamAdmin(admin.ModelAdmin):
                         if not question:
                             question = Question.objects.create(
                                 text=text,
-                                options={
-                                    'A': parts[1],
-                                    'B': parts[2],
-                                    'C': parts[3],
-                                    'D': parts[4],
-                                },
+                                options=options,
                                 correct_answer=parts[5].upper(),
                                 explanation=parts[6] if len(parts) > 6 else '',
                                 topic=default_topic,

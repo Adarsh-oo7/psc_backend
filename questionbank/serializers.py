@@ -449,15 +449,30 @@ class QuestionSubmissionSerializer(serializers.Serializer):
     explanation = serializers.CharField(required=False, allow_blank=True, default='')
     language = serializers.ChoiceField(choices=['en', 'ml'], default='en')
 
-    def validate_question_text(self, value):
+    def validate(self, attrs):
         import re
         import hashlib
-        normalized = re.sub(r'[^\w\s]', '', value).lower().strip()
+        
+        question_text = attrs.get('question_text')
+        options_dict = {
+            'A': attrs.get('option_a'),
+            'B': attrs.get('option_b'),
+            'C': attrs.get('option_c'),
+            'D': attrs.get('option_d')
+        }
+        
+        normalized = re.sub(r'[^\w\s]', '', question_text).lower().strip()
         normalized = re.sub(r'\s+', ' ', normalized)
+        
+        if options_dict:
+            opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(options_dict.items()))
+            normalized = f"{normalized}||{opts_str}"
+            
         text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
         if Question.objects.filter(text_hash=text_hash).exists():
-            raise serializers.ValidationError("This question already exists")
-        return value
+            raise serializers.ValidationError({"question_text": "This question already exists"})
+            
+        return attrs
 
     def create(self, validated_data):
         request = self.context.get('request')
