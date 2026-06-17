@@ -33,28 +33,40 @@
         --danger-bg: #7f1d1d;
         --warning: #fbbf24;
         --warning-bg: #78350f;
-        --gray-100: #1f2937;
-        --gray-200: #374151;
-        --gray-300: #4b5563;
+        --gray-100: #111827;
+        --gray-200: #1f2937;
+        --gray-300: #374151;
         --gray-700: #d1d5db;
         --gray-800: #f3f4f6;
         --text-main: #f9fafb;
         --text-muted: #9ca3af;
         --border-color: #374151;
-        --bg-card: #111827;
+        --bg-card: #1f2937;
     }
 
+    /* Override standard Django Admin layout spacing */
     #content {
-        padding: 20px 40px !important;
+        padding: 20px 24px !important;
         background-color: var(--gray-100) !important;
         color: var(--text-main) !important;
+        min-height: calc(100vh - 120px);
+    }
+
+    /* Main Container to restrict ultra-wide scaling */
+    .dashboard-container {
+        max-width: 1200px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
     }
 
     .dashboard-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 24px;
+        flex-wrap: wrap;
+        gap: 16px;
         background: linear-gradient(135deg, var(--primary), #818cf8);
         padding: 24px;
         border-radius: 12px;
@@ -70,21 +82,23 @@
     }
 
     .dashboard-header p {
-        margin: 4px 0 0 0;
+        margin: 6px 0 0 0;
         opacity: 0.9;
         font-size: 14px;
+        line-height: 1.4;
     }
 
     .back-btn {
         background: rgba(255, 255, 255, 0.2);
         color: white !important;
-        padding: 8px 16px;
+        padding: 10px 18px;
         border-radius: 8px;
         text-decoration: none !important;
         font-weight: 600;
         font-size: 14px;
         transition: background 0.2s;
         border: 1px solid rgba(255, 255, 255, 0.3);
+        display: inline-block;
     }
 
     .back-btn:hover {
@@ -94,16 +108,15 @@
     /* Filter Bar Styling */
     .filter-section {
         background: var(--bg-card);
-        padding: 20px;
+        padding: 24px;
         border-radius: 12px;
         border: 1px solid var(--border-color);
-        margin-bottom: 24px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.02);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
     }
 
     .filter-form {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 16px;
         align-items: end;
     }
@@ -115,8 +128,8 @@
     }
 
     .form-group label {
-        font-weight: 600;
-        font-size: 12px;
+        font-weight: 700;
+        font-size: 11px;
         color: var(--text-muted);
         text-transform: uppercase;
         letter-spacing: 0.05em;
@@ -130,16 +143,21 @@
         color: var(--text-main);
         font-size: 14px;
         outline: none;
-        transition: border-color 0.2s;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        width: 100%;
+        box-sizing: border-box;
     }
 
     .form-control:focus {
         border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
     }
 
     .filter-actions {
         display: flex;
         gap: 12px;
+        justify-content: flex-end;
+        align-items: center;
     }
 
     .btn {
@@ -150,7 +168,9 @@
         cursor: pointer;
         border: none;
         text-align: center;
-        transition: transform 0.1s, opacity 0.2s;
+        transition: transform 0.1s, opacity 0.2s, background 0.2s;
+        display: inline-block;
+        box-sizing: border-box;
     }
 
     .btn:active {
@@ -159,7 +179,7 @@
 
     .btn-primary {
         background: var(--primary);
-        color: white;
+        color: white !important;
     }
 
     .btn-primary:hover {
@@ -168,7 +188,7 @@
 
     .btn-secondary {
         background: var(--gray-200);
-        color: var(--gray-700);
+        color: var(--gray-700) !important;
         text-decoration: none !important;
     }
 
@@ -190,6 +210,7 @@
         padding: 24px;
         box-shadow: 0 4px 6px rgba(0, 0, 0, 0.01), 0 1px 3px rgba(0, 0, 0, 0.02);
         transition: transform 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
     }
 
     .question-card:hover {
@@ -218,8 +239,9 @@
     .badge {
         padding: 4px 10px;
         border-radius: 9999px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 600;
+        display: inline-block;
     }
 
     .badge-topic {
@@ -227,9 +249,19 @@
         color: #4338ca;
     }
 
+    body.dark-mode .badge-topic {
+        background: #312e81;
+        color: #c7d2fe;
+    }
+
     .badge-diff-easy {
         background: #d1fae5;
         color: #065f46;
+    }
+
+    body.dark-mode .badge-diff-easy {
+        background: #064e3b;
+        color: #a7f3d0;
     }
 
     .badge-diff-medium {
@@ -237,9 +269,19 @@
         color: #92400e;
     }
 
+    body.dark-mode .badge-diff-medium {
+        background: #78350f;
+        color: #fde68a;
+    }
+
     .badge-diff-hard {
         background: #fee2e2;
         color: #991b1b;
+    }
+
+    body.dark-mode .badge-diff-hard {
+        background: #7f1d1d;
+        color: #fecaca;
     }
 
     .badge-lang {
@@ -248,11 +290,17 @@
         text-transform: uppercase;
     }
 
+    body.dark-mode .badge-lang {
+        background: #374151;
+        color: #f3f4f6;
+    }
+
     .question-text {
         font-size: 16px;
         line-height: 1.6;
         font-weight: 600;
-        margin-bottom: 16px;
+        margin-bottom: 18px;
+        word-break: break-word;
     }
 
     /* Options Styling */
@@ -260,10 +308,10 @@
         display: grid;
         grid-template-columns: 1fr 1fr;
         gap: 12px;
-        margin-bottom: 16px;
+        margin-bottom: 18px;
     }
 
-    @media (max-width: 640px) {
+    @media (max-width: 768px) {
         .options-grid {
             grid-template-columns: 1fr;
         }
@@ -276,8 +324,9 @@
         background: var(--gray-100);
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 12px;
         font-size: 14px;
+        word-break: break-word;
     }
 
     .option-letter {
@@ -291,6 +340,7 @@
         align-items: center;
         justify-content: center;
         font-size: 12px;
+        flex-shrink: 0;
     }
 
     .option-item.correct {
@@ -313,6 +363,11 @@
         font-size: 13.5px;
         color: var(--gray-700);
         margin-bottom: 20px;
+        word-break: break-word;
+    }
+
+    body.dark-mode .explanation-box {
+        color: #fde68a;
     }
 
     /* Action Controls */
@@ -326,9 +381,20 @@
         gap: 16px;
     }
 
+    @media (max-width: 600px) {
+        .card-actions {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .action-group {
+            justify-content: space-between;
+            width: 100%;
+        }
+    }
+
     .action-group {
         display: flex;
-        gap: 16px;
+        gap: 12px;
         align-items: center;
     }
 
@@ -358,6 +424,12 @@
         color: #2563eb;
     }
 
+    body.dark-mode .toggle-btn.btn-active {
+        background: #1e3a8a;
+        border-color: #3b82f6;
+        color: #93c5fd;
+    }
+
     .toggle-btn.btn-hidden {
         background: var(--danger-bg);
         border-color: var(--danger);
@@ -385,6 +457,7 @@
         font-weight: 600;
         font-size: 13.5px;
         cursor: pointer;
+        padding: 0;
     }
 
     .delete-btn:hover {
@@ -401,6 +474,15 @@
         padding: 16px 24px;
         border-radius: 12px;
         border: 1px solid var(--border-color);
+        flex-wrap: wrap;
+        gap: 16px;
+    }
+
+    @media (max-width: 600px) {
+        .pagination-container {
+            flex-direction: column;
+            text-align: center;
+        }
     }
 
     .pagination-info {
@@ -411,13 +493,15 @@
     .pagination-links {
         display: flex;
         gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
     }
 
     .page-link {
         padding: 8px 14px;
         border-radius: 8px;
         background: var(--gray-100);
-        color: var(--text-main);
+        color: var(--text-main) !important;
         text-decoration: none !important;
         font-weight: 600;
         font-size: 14px;
@@ -430,7 +514,7 @@
 
     .page-link.active {
         background: var(--primary);
-        color: white;
+        color: white !important;
         border-color: var(--primary);
     }
 
@@ -454,6 +538,11 @@
         z-index: 9999;
     }
 
+    body.dark-mode #toast-notification {
+        background: #f3f4f6;
+        color: #111827;
+    }
+
     #toast-notification.show {
         transform: translateY(0);
         opacity: 1;
@@ -462,203 +551,205 @@
 {% endblock %}
 
 {% block content %}
-<div class="dashboard-header">
-    <div>
-        <h1>Question Bank Verification Dashboard</h1>
-        <p>Verify, Correct, Show, or Hide questions dynamically. Check and curate imported records safely.</p>
-    </div>
-    <div>
-        <a href=".." class="back-btn">← Back to Admin Panel</a>
-    </div>
-</div>
-
-<!-- Filters Section -->
-<div class="filter-section">
-    <form method="get" class="filter-form">
-        <!-- Search Query -->
-        <div class="form-group" style="grid-column: span 2;">
-            <label for="q">Search Question Text</label>
-            <input type="text" id="q" name="q" value="{{ search_query }}" placeholder="Search questions..." class="form-control">
+<div class="dashboard-container">
+    <div class="dashboard-header">
+        <div>
+            <h1>Question Bank Verification Dashboard</h1>
+            <p>Verify, Correct, Show, or Hide questions dynamically. Check and curate imported records safely.</p>
         </div>
-
-        <!-- Topic Filter -->
-        <div class="form-group">
-            <label for="topic">Topic</label>
-            <select id="topic" name="topic" class="form-control">
-                <option value="">-- All Topics --</option>
-                {% for t in topics %}
-                <option value="{{ t.id }}" {% if selected_topic == t.id|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>
-                {% endfor %}
-            </select>
-        </div>
-
-        <!-- Verification Filter -->
-        <div class="form-group">
-            <label for="verified">Verification</label>
-            <select id="verified" name="verified" class="form-control">
-                <option value="">-- All Status --</option>
-                <option value="1" {% if selected_verified == "1" %}selected{% endif %}>Verified Only</option>
-                <option value="0" {% if selected_verified == "0" %}selected{% endif %}>Unverified Only</option>
-            </select>
-        </div>
-
-        <!-- Status Filter -->
-        <div class="form-group">
-            <label for="status">Status (Visibility)</label>
-            <select id="status" name="status" class="form-control">
-                <option value="">-- All Status --</option>
-                <option value="approved" {% if selected_status == "approved" %}selected{% endif %}>Approved (Visible)</option>
-                <option value="rejected" {% if selected_status == "rejected" %}selected{% endif %}>Rejected (Hidden)</option>
-                <option value="pending" {% if selected_status == "pending" %}selected{% endif %}>Pending</option>
-            </select>
-        </div>
-
-        <!-- Language Filter -->
-        <div class="form-group">
-            <label for="language">Language</label>
-            <select id="language" name="language" class="form-control">
-                <option value="">-- All Languages --</option>
-                <option value="en" {% if selected_language == "en" %}selected{% endif %}>English</option>
-                <option value="ml" {% if selected_language == "ml" %}selected{% endif %}>Malayalam</option>
-            </select>
-        </div>
-
-        <!-- Difficulty Filter -->
-        <div class="form-group">
-            <label for="difficulty">Difficulty</label>
-            <select id="difficulty" name="difficulty" class="form-control">
-                <option value="">-- All Difficulty --</option>
-                <option value="easy" {% if selected_difficulty == "easy" %}selected{% endif %}>Easy</option>
-                <option value="medium" {% if selected_difficulty == "medium" %}selected{% endif %}>Medium</option>
-                <option value="hard" {% if selected_difficulty == "hard" %}selected{% endif %}>Hard</option>
-            </select>
-        </div>
-
-        <!-- Action Buttons -->
-        <div class="filter-actions">
-            <button type="submit" class="btn btn-primary">Apply Filters</button>
-            <a href="?" class="btn btn-secondary">Clear</a>
-        </div>
-    </form>
-</div>
-
-<!-- Questions Loop -->
-<div class="question-list">
-    {% for question in page_obj %}
-    <div class="question-card" id="question-card-{{ question.id }}">
-        <!-- Meta Details -->
-        <div class="card-meta">
-            <div class="meta-tags">
-                <span class="badge badge-topic">{{ question.topic.name }}</span>
-                {% if question.sub_topic %}
-                <span class="badge" style="background:#f1f5f9; color:#475569;">{{ question.sub_topic }}</span>
-                {% endif %}
-                <span class="badge badge-diff-{{ question.difficulty }}">{{ question.difficulty|title }}</span>
-                <span class="badge badge-lang">{{ question.language }}</span>
-                
-                {% for exam in question.exams.all %}
-                <span class="badge" style="background:#faf5ff; color:#7e22ce; border: 1px solid #e9d5ff;">{{ exam.name }}</span>
-                {% endfor %}
-            </div>
-            <div style="font-size:12px; color:var(--text-muted); font-weight: 600;">
-                ID: #{{ question.id }}
-            </div>
-        </div>
-
-        <!-- Text -->
-        <div class="question-text">
-            {{ question.text }}
-        </div>
-
-        <!-- Options -->
-        <div class="options-grid">
-            <div class="option-item {% if question.correct_answer == 'A' %}correct{% endif %}">
-                <div class="option-letter">A</div>
-                <div>{{ question.options.A }}</div>
-            </div>
-            <div class="option-item {% if question.correct_answer == 'B' %}correct{% endif %}">
-                <div class="option-letter">B</div>
-                <div>{{ question.options.B }}</div>
-            </div>
-            <div class="option-item {% if question.correct_answer == 'C' %}correct{% endif %}">
-                <div class="option-letter">C</div>
-                <div>{{ question.options.C }}</div>
-            </div>
-            <div class="option-item {% if question.correct_answer == 'D' %}correct{% endif %}">
-                <div class="option-letter">D</div>
-                <div>{{ question.options.D }}</div>
-            </div>
-        </div>
-
-        <!-- Explanation -->
-        {% if question.explanation %}
-        <div class="explanation-box">
-            <strong>Explanation:</strong> {{ question.explanation }}
-        </div>
-        {% endif %}
-
-        <!-- Actions -->
-        <div class="card-actions">
-            <div class="action-group">
-                <!-- Verify Toggle Button -->
-                <button onclick="toggleVerify({{ question.id }})" 
-                        id="verify-btn-{{ question.id }}" 
-                        class="toggle-btn {% if question.verified %}btn-verified{% endif %}">
-                    <span id="verify-icon-{{ question.id }}">{% if question.verified %}✓ Verified{% else %}✗ Unverified{% endif %}</span>
-                </button>
-
-                <!-- Status Show/Hide Toggle Button -->
-                <button onclick="toggleStatus({{ question.id }})" 
-                        id="status-btn-{{ question.id }}" 
-                        class="toggle-btn {% if question.status == 'approved' %}btn-active{% else %}btn-hidden{% endif %}">
-                    <span id="status-icon-{{ question.id }}">{% if question.status == 'approved' %}👁️ Visible{% else %}🚫 Hidden{% endif %}</span>
-                </button>
-            </div>
-            
-            <div class="action-group">
-                <a href="../../../questionbank/question/{{ question.id }}/change/" target="_blank" class="edit-link">
-                    ✏️ Edit Question
-                </a>
-                <button onclick="deleteQuestion({{ question.id }})" class="delete-btn">
-                    🗑️ Delete
-                </button>
-            </div>
+        <div>
+            <a href=".." class="back-btn">← Back to Admin Panel</a>
         </div>
     </div>
-    {% empty %}
-    <div style="text-align: center; padding: 48px; background: var(--bg-card); border-radius: 12px; border: 1px dashed var(--border-color);">
-        <p style="font-size: 16px; font-weight: 600; color: var(--text-muted);">No questions found matching your filter criteria.</p>
-    </div>
-    {% endfor %}
-</div>
 
-<!-- Pagination Controls -->
-{% if page_obj.has_other_pages %}
-<div class="pagination-container">
-    <div class="pagination-info">
-        Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} questions
-    </div>
-    <div class="pagination-links">
-        {% if page_obj.has_previous %}
-        <a href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">&laquo; First</a>
-        <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">Previous</a>
-        {% endif %}
+    <!-- Filters Section -->
+    <div class="filter-section">
+        <form method="get" class="filter-form">
+            <!-- Search Query -->
+            <div class="form-group" style="grid-column: span 2;">
+                <label for="q">Search Question Text</label>
+                <input type="text" id="q" name="q" value="{{ search_query }}" placeholder="Search questions..." class="form-control">
+            </div>
 
-        {% for num in page_obj.paginator.page_range %}
-            {% if page_obj.number == num %}
-                <span class="page-link active">{{ num }}</span>
-            {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
-                <a href="?page={{ num }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">{{ num }}</a>
+            <!-- Topic Filter -->
+            <div class="form-group">
+                <label for="topic">Topic</label>
+                <select id="topic" name="topic" class="form-control">
+                    <option value="">-- All Topics --</option>
+                    {% for t in topics %}
+                    <option value="{{ t.id }}" {% if selected_topic == t.id|stringformat:"s" %}selected{% endif %}>{{ t.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Verification Filter -->
+            <div class="form-group">
+                <label for="verified">Verification</label>
+                <select id="verified" name="verified" class="form-control">
+                    <option value="">-- All Status --</option>
+                    <option value="1" {% if selected_verified == "1" %}selected{% endif %}>Verified Only</option>
+                    <option value="0" {% if selected_verified == "0" %}selected{% endif %}>Unverified Only</option>
+                </select>
+            </div>
+
+            <!-- Status Filter -->
+            <div class="form-group">
+                <label for="status">Status (Visibility)</label>
+                <select id="status" name="status" class="form-control">
+                    <option value="">-- All Status --</option>
+                    <option value="approved" {% if selected_status == "approved" %}selected{% endif %}>Approved (Visible)</option>
+                    <option value="rejected" {% if selected_status == "rejected" %}selected{% endif %}>Rejected (Hidden)</option>
+                    <option value="pending" {% if selected_status == "pending" %}selected{% endif %}>Pending</option>
+                </select>
+            </div>
+
+            <!-- Language Filter -->
+            <div class="form-group">
+                <label for="language">Language</label>
+                <select id="language" name="language" class="form-control">
+                    <option value="">-- All Languages --</option>
+                    <option value="en" {% if selected_language == "en" %}selected{% endif %}>English</option>
+                    <option value="ml" {% if selected_language == "ml" %}selected{% endif %}>Malayalam</option>
+                </select>
+            </div>
+
+            <!-- Difficulty Filter -->
+            <div class="form-group">
+                <label for="difficulty">Difficulty</label>
+                <select id="difficulty" name="difficulty" class="form-control">
+                    <option value="">-- All Difficulty --</option>
+                    <option value="easy" {% if selected_difficulty == "easy" %}selected{% endif %}>Easy</option>
+                    <option value="medium" {% if selected_difficulty == "medium" %}selected{% endif %}>Medium</option>
+                    <option value="hard" {% if selected_difficulty == "hard" %}selected{% endif %}>Hard</option>
+                </select>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="filter-actions" style="grid-column: 1 / -1;">
+                <button type="submit" class="btn btn-primary">Apply Filters</button>
+                <a href="?" class="btn btn-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Questions Loop -->
+    <div class="question-list">
+        {% for question in page_obj %}
+        <div class="question-card" id="question-card-{{ question.id }}">
+            <!-- Meta Details -->
+            <div class="card-meta">
+                <div class="meta-tags">
+                    <span class="badge badge-topic">{{ question.topic.name }}</span>
+                    {% if question.sub_topic %}
+                    <span class="badge" style="background:#f1f5f9; color:#475569;">{{ question.sub_topic }}</span>
+                    {% endif %}
+                    <span class="badge badge-diff-{{ question.difficulty }}">{{ question.difficulty|title }}</span>
+                    <span class="badge badge-lang">{{ question.language }}</span>
+                    
+                    {% for exam in question.exams.all %}
+                    <span class="badge" style="background:#faf5ff; color:#7e22ce; border: 1px solid #e9d5ff;">{{ exam.name }}</span>
+                    {% endfor %}
+                </div>
+                <div style="font-size:12px; color:var(--text-muted); font-weight: 600;">
+                    ID: #{{ question.id }}
+                </div>
+            </div>
+
+            <!-- Text -->
+            <div class="question-text">
+                {{ question.text }}
+            </div>
+
+            <!-- Options -->
+            <div class="options-grid">
+                <div class="option-item {% if question.correct_answer == 'A' %}correct{% endif %}">
+                    <div class="option-letter">A</div>
+                    <div>{{ question.options.A }}</div>
+                </div>
+                <div class="option-item {% if question.correct_answer == 'B' %}correct{% endif %}">
+                    <div class="option-letter">B</div>
+                    <div>{{ question.options.B }}</div>
+                </div>
+                <div class="option-item {% if question.correct_answer == 'C' %}correct{% endif %}">
+                    <div class="option-letter">C</div>
+                    <div>{{ question.options.C }}</div>
+                </div>
+                <div class="option-item {% if question.correct_answer == 'D' %}correct{% endif %}">
+                    <div class="option-letter">D</div>
+                    <div>{{ question.options.D }}</div>
+                </div>
+            </div>
+
+            <!-- Explanation -->
+            {% if question.explanation %}
+            <div class="explanation-box">
+                <strong>Explanation:</strong> {{ question.explanation }}
+            </div>
             {% endif %}
-        {% endfor %}
 
-        {% if page_obj.has_next %}
-        <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">Next</a>
-        <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">Last &raquo;</a>
-        {% endif %}
+            <!-- Actions -->
+            <div class="card-actions">
+                <div class="action-group">
+                    <!-- Verify Toggle Button -->
+                    <button onclick="toggleVerify({{ question.id }})" 
+                            id="verify-btn-{{ question.id }}" 
+                            class="toggle-btn {% if question.verified %}btn-verified{% endif %}">
+                        <span id="verify-icon-{{ question.id }}">{% if question.verified %}✓ Verified{% else %}✗ Unverified{% endif %}</span>
+                    </button>
+
+                    <!-- Status Show/Hide Toggle Button -->
+                    <button onclick="toggleStatus({{ question.id }})" 
+                            id="status-btn-{{ question.id }}" 
+                            class="toggle-btn {% if question.status == 'approved' %}btn-active{% else %}btn-hidden{% endif %}">
+                        <span id="status-icon-{{ question.id }}">{% if question.status == 'approved' %}👁️ Visible{% else %}🚫 Hidden{% endif %}</span>
+                    </button>
+                </div>
+                
+                <div class="action-group">
+                    <a href="../../../questionbank/question/{{ question.id }}/change/" target="_blank" class="edit-link">
+                        ✏️ Edit Question
+                    </a>
+                    <button onclick="deleteQuestion({{ question.id }})" class="delete-btn">
+                        🗑️ Delete
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <div style="text-align: center; padding: 48px; background: var(--bg-card); border-radius: 12px; border: 1px dashed var(--border-color);">
+            <p style="font-size: 16px; font-weight: 600; color: var(--text-muted);">No questions found matching your filter criteria.</p>
+        </div>
+        {% endfor %}
     </div>
+
+    <!-- Pagination Controls -->
+    {% if page_obj.has_other_pages %}
+    <div class="pagination-container">
+        <div class="pagination-info">
+            Showing {{ page_obj.start_index }} to {{ page_obj.end_index }} of {{ page_obj.paginator.count }} questions
+        </div>
+        <div class="pagination-links">
+            {% if page_obj.has_previous %}
+            <a href="?page=1{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">&laquo; First</a>
+            <a href="?page={{ page_obj.previous_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">Previous</a>
+            {% endif %}
+
+            {% for num in page_obj.paginator.page_range %}
+                {% if page_obj.number == num %}
+                    <span class="page-link active">{{ num }}</span>
+                {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                    <a href="?page={{ num }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">{{ num }}</a>
+                {% endif %}
+            {% endfor %}
+
+            {% if page_obj.has_next %}
+            <a href="?page={{ page_obj.next_page_number }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">Next</a>
+            <a href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&q={{ search_query }}{% endif %}{% if selected_topic %}&topic={{ selected_topic }}{% endif %}{% if selected_verified %}&verified={{ selected_verified }}{% endif %}{% if selected_status %}&status={{ selected_status }}{% endif %}{% if selected_language %}&language={{ selected_language }}{% endif %}{% if selected_difficulty %}&difficulty={{ selected_difficulty }}{% endif %}" class="page-link">Last &raquo;</a>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
 </div>
-{% endif %}
 
 <!-- Toast Notifier -->
 <div id="toast-notification">
@@ -667,7 +758,6 @@
 </div>
 
 <script>
-    // Helper to get CSRF token from cookies
     function getCookie(name) {
         let cookieValue = null;
         if (document.cookie && document.cookie !== '') {
@@ -795,7 +885,7 @@
                 card.style.opacity = '0';
                 setTimeout(() => {
                     card.remove();
-                }, 3000);
+                }, 300);
                 showToast('Question deleted successfully', 'success');
             } else {
                 showToast(data.error || 'Failed to delete question', 'error');
