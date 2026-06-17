@@ -1,0 +1,18 @@
+{% extends "admin/index.html" %}
+
+{% block sidebar %}
+    <!-- Custom Verification Dashboard Quick Link -->
+    <div class="module" id="custom-dashboard-panel" style="margin-bottom: 24px; padding: 20px; background: linear-gradient(135deg, #1e1b4b, #312e81); color: #f8fafc; border-radius: 10px; border: 1px solid #4338ca; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);">
+        <h2 style="color: #818cf8; margin: 0 0 10px 0; font-size: 16px; font-weight: 700; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #4338ca; padding-bottom: 8px;">
+            <span style="font-size: 18px;">🛡️</span> Question Moderation
+        </h2>
+        <p style="font-size: 13px; color: #cbd5e1; line-height: 1.5; margin: 0 0 16px 0;">
+            Review and verify newly imported questions, edit incorrect content, and toggle public visibility.
+        </p>
+        <a href="{% url 'admin:questionbank_question_verification_dashboard' %}" class="button" style="display: block; text-align: center; background: #4f46e5; color: white; padding: 10px; border-radius: 6px; font-weight: 600; text-decoration: none; transition: background 0.2s; border: none; font-size: 13px;">
+            Open Verification Dashboard
+        </a>
+    </div>
+
+    {{ block.super }}
+{% endblock %}

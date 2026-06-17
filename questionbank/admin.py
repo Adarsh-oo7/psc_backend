@@ -105,7 +105,13 @@ class QuestionAdmin(admin.ModelAdmin):
     
     def get_urls(self):
         urls = super().get_urls()
-        custom_urls = [path('bulk-upload/', self.admin_site.admin_view(self.bulk_upload_view), name='questionbank_question_bulk_upload')]
+        custom_urls = [
+            path('bulk-upload/', self.admin_site.admin_view(self.bulk_upload_view), name='questionbank_question_bulk_upload'),
+            path('verification-dashboard/', self.admin_site.admin_view(self.verification_dashboard_view), name='questionbank_question_verification_dashboard'),
+            path('<int:question_id>/api/toggle-verify/', self.admin_site.admin_view(self.api_toggle_verify), name='questionbank_question_api_toggle_verify'),
+            path('<int:question_id>/api/toggle-status/', self.admin_site.admin_view(self.api_toggle_status), name='questionbank_question_api_toggle_status'),
+            path('<int:question_id>/api/delete/', self.admin_site.admin_view(self.api_delete_question), name='questionbank_question_api_delete'),
+        ]
         return custom_urls + urls
 
     def bulk_upload_view(self, request):
@@ -512,6 +518,103 @@ class QuestionAdmin(admin.ModelAdmin):
         </ul>
         """
         return render(request, 'admin/questionbank/question/bulk_upload.html', context)
+
+    def verification_dashboard_view(self, request):
+        from django.core.paginator import Paginator
+        from django.http import Http404
+        
+        # Check permissions
+        if not self.has_change_permission(request):
+            raise Http404("You do not have permission to view this dashboard.")
+            
+        # Get query parameters
+        search_query = request.GET.get('q', '').strip()
+        topic_id = request.GET.get('topic', '').strip()
+        status_filter = request.GET.get('status', '').strip()
+        verify_filter = request.GET.get('verified', '').strip()
+        lang_filter = request.GET.get('language', '').strip()
+        difficulty_filter = request.GET.get('difficulty', '').strip()
+        
+        # Start with all questions
+        queryset = Question.objects.all().order_by('-id')
+        
+        # Apply search
+        if search_query:
+            queryset = queryset.filter(text__icontains=search_query)
+            
+        # Apply filters
+        if topic_id:
+            queryset = queryset.filter(topic_id=topic_id)
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
+        if verify_filter:
+            is_v = verify_filter == '1'
+            queryset = queryset.filter(Q(verified=is_v) | Q(is_verified=is_v))
+        if lang_filter:
+            queryset = queryset.filter(language=lang_filter)
+        if difficulty_filter:
+            queryset = queryset.filter(difficulty=difficulty_filter)
+            
+        # Paginator
+        paginator = Paginator(queryset, 50)  # 50 per page
+        page_number = request.GET.get('page', 1)
+        page_obj = paginator.get_page(page_number)
+        
+        # Context lists
+        topics = Topic.objects.all().order_by('name')
+        
+        context = dict(
+            self.admin_site.each_context(request),
+            title="Question Verification Dashboard",
+            page_obj=page_obj,
+            topics=topics,
+            search_query=search_query,
+            selected_topic=topic_id,
+            selected_status=status_filter,
+            selected_verified=verify_filter,
+            selected_language=lang_filter,
+            selected_difficulty=difficulty_filter,
+        )
+        return render(request, 'admin/questionbank/question/verification_dashboard.html', context)
+
+    def api_toggle_verify(self, request, question_id):
+        from django.http import JsonResponse
+        if not self.has_change_permission(request):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        try:
+            question = Question.objects.get(pk=question_id)
+            new_val = not question.verified
+            question.verified = new_val
+            question.is_verified = new_val
+            question.save()
+            return JsonResponse({'success': True, 'verified': new_val})
+        except Question.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Question not found'}, status=404)
+
+    def api_toggle_status(self, request, question_id):
+        from django.http import JsonResponse
+        if not self.has_change_permission(request):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        try:
+            question = Question.objects.get(pk=question_id)
+            new_status = 'rejected' if question.status == 'approved' else 'approved'
+            question.status = new_status
+            question.save()
+            return JsonResponse({'success': True, 'status': new_status})
+        except Question.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Question not found'}, status=404)
+
+    def api_delete_question(self, request, question_id):
+        from django.http import JsonResponse
+        if not self.has_delete_permission(request):
+            return JsonResponse({'success': False, 'error': 'Permission denied'}, status=403)
+        try:
+            question = Question.objects.get(pk=question_id)
+            question.delete()
+            return JsonResponse({'success': True})
+        except Question.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'Question not found'}, status=404)
+
 
 
 @admin.register(ExamSyllabus)

@@ -755,3 +755,64 @@ class GoogleSignInTestCase(APITestCase):
 
 
 
+
+class AdminDashboardTestCase(TestCase):
+    def setUp(self):
+        self.superuser = User.objects.create_superuser(username='admin_user', password='adminpassword')
+        self.regular_user = User.objects.create_user(username='regular_user', password='password123')
+        self.topic = Topic.objects.create(name='Kerala History', slug='kerala-history')
+        self.question = Question.objects.create(
+            text="Who was the ruler of Travancore in 1800?",
+            options={'A': 'Balarama Varma', 'B': 'Marthanda Varma', 'C': 'Swathi Thirunal', 'D': 'Dharma Raja'},
+            correct_answer='A',
+            topic=self.topic,
+            difficulty='medium',
+            status='approved',
+            verified=False,
+            is_verified=False
+        )
+
+    def test_dashboard_view_requires_permissions(self):
+        # Anonymous user gets redirected to login
+        response = self.client.get('/admin/questionbank/question/verification-dashboard/')
+        self.assertEqual(response.status_code, 302)
+
+        # Regular user (non-staff) gets redirected to login (302)
+        self.client.login(username='regular_user', password='password123')
+        response = self.client.get('/admin/questionbank/question/verification-dashboard/')
+        self.assertEqual(response.status_code, 302)
+
+        # Superuser gets 200 OK
+        self.client.login(username='admin_user', password='adminpassword')
+        response = self.client.get('/admin/questionbank/question/verification-dashboard/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Travancore")
+
+    def test_api_toggle_verify(self):
+        self.client.login(username='admin_user', password='adminpassword')
+        response = self.client.post(f'/admin/questionbank/question/{self.question.id}/api/toggle-verify/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['success'], True)
+        self.assertEqual(response.json()['verified'], True)
+
+        self.question.refresh_from_db()
+        self.assertTrue(self.question.verified)
+        self.assertTrue(self.question.is_verified)
+
+    def test_api_toggle_status(self):
+        self.client.login(username='admin_user', password='adminpassword')
+        response = self.client.post(f'/admin/questionbank/question/{self.question.id}/api/toggle-status/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['success'], True)
+        self.assertEqual(response.json()['status'], 'rejected')
+
+        self.question.refresh_from_db()
+        self.assertEqual(self.question.status, 'rejected')
+
+    def test_api_delete_question(self):
+        self.client.login(username='admin_user', password='adminpassword')
+        response = self.client.post(f'/admin/questionbank/question/{self.question.id}/api/delete/')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['success'], True)
+
+        self.assertFalse(Question.objects.filter(id=self.question.id).exists())
