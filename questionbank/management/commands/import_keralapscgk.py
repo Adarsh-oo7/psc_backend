@@ -98,7 +98,18 @@ class Command(BaseCommand):
                     # Format B: Old santosh-button Q&A reveal format
                     santosh_inputs = soup.find_all('input', class_='santosh')
 
-                    if not mcq_containers and not santosh_inputs:
+                    # Format C: quiz_container divs (no buttons, question + bold answer in .single.enabled)
+                    quiz_container_divs = soup.find_all('div', class_='single') if not mcq_containers and not santosh_inputs else []
+
+                    # Format D: Inline numbered Q with bold answer ("1. Question - <b>Answer</b>")
+                    has_format_d = False
+                    if not mcq_containers and not santosh_inputs and not quiz_container_divs:
+                        # Heuristic: numbered list with <b> tags in same paragraph/block after dash
+                        bold_tags = soup.find_all('b')
+                        text_nodes_with_dash = re.findall(r'\d+\.\s*.+?\s+-\s+<b>(.+?)</b>', html_content)
+                        has_format_d = len(text_nodes_with_dash) >= 3
+
+                    if not mcq_containers and not santosh_inputs and not quiz_container_divs and not has_format_d:
                         self.stdout.write(self.style.WARNING("  No supported quiz format found. Skipping."))
                         continue
 
@@ -172,28 +183,75 @@ class Command(BaseCommand):
 
                     # ================================================
                     # FORMAT B: Old santosh-button Q&A reveal parser
+                    # Supports multiple onclick variants:
+                    #   B1: value=('Answer - X')          → classic format
+                    #   B2: value=('Answer: [d] ')         → Maths MCQ format (letter option)
+                    #   B3: value=("answer text")          → direct value (Malayalam/Kerala)
                     # ================================================
                     elif santosh_inputs:
                         self.stdout.write(f"  [Format B - Q&A] Found {len(santosh_inputs)} items.")
+
+                        def extract_answer_from_onclick(onclick_str, btn_value=''):
+                            """Try all known onclick formats and return the answer text, or None."""
+                            # Skip 'Solution' toggle buttons
+                            if btn_value and btn_value.strip().lower() in ('solution', 'hide solution'):
+                                return None
+                            if 'getElementsByTagName' in onclick_str:
+                                return None
+
+                            # B1: Answer - X  (classic: dash separator)
+                            m = re.search(r'Answer\s*[-\u2013]\s*(.+?)["\')]', onclick_str)
+                            if m:
+                                return m.group(1).strip()
+
+                            # B2: Answer: [d] X  (Maths: colon + letter in brackets)
+                            m = re.search(r'Answer:\s*\[([a-dA-D])\]\s*(.*?)["\')]', onclick_str)
+                            if m:
+                                letter = m.group(1).upper()  # keep A-D letter as answer
+                                extra = m.group(2).strip()
+                                return f'[{letter}] {extra}'.strip() if extra else f'[{letter}]'
+
+                            # B2b: Answer: [d] with no trailing text
+                            m = re.search(r'Answer:\s*\[([a-dA-D])\s*\]', onclick_str)
+                            if m:
+                                return f'[{m.group(1).upper()}]'
+
+                            # B3: value=("direct text") or value=('direct text')  — no Answer prefix
+                            # Only apply if button value is something like 'Answer' or Malayalam 'ഉത്തരം'
+                            btn_val_lower = (btn_value or '').strip().lower()
+                            if btn_val_lower in ('answer', '\u0d09\u0d24\u0d4d\u0d24\u0d30\u0d02', '\u0d09\u0d24\u0d4d\u0d24\u0d30'):
+                                m = re.search(r'value\s*=\s*[\(\[]\s*["\'](.+?)["\']', onclick_str)
+                                if m:
+                                    txt = m.group(1).strip()
+                                    # Reject if it's just whitespace or looks like code
+                                    if txt and len(txt) >= 1 and 'getElementsByTagName' not in txt:
+                                        return txt
+
+                            return None
+
                         # Split HTML by <hr> tags to get individual Q&A blocks
                         blocks = re.split(r'<hr\s*/?>', html_content, flags=re.IGNORECASE)
                         for block in blocks:
                             block_soup = BeautifulSoup(block, 'html.parser')
-                            btn = block_soup.find('input', class_='santosh')
-                            if not btn:
+                            # Find the FIRST non-Solution santosh button in this block
+                            all_btns = block_soup.find_all('input', class_='santosh')
+                            btn = None
+                            correct_text = None
+                            for candidate_btn in all_btns:
+                                onclick = candidate_btn.get('onclick', '')
+                                val = candidate_btn.get('value', '')
+                                answer = extract_answer_from_onclick(onclick, val)
+                                if answer is not None:
+                                    btn = candidate_btn
+                                    correct_text = answer
+                                    break
+
+                            if btn is None or not correct_text:
                                 continue
 
-                            # Extract correct answer text from onclick attribute
-                            onclick = btn.get('onclick', '')
-                            answer_match = re.search(r'Answer\s*[-\u2013]\s*(.+?)["\')]', onclick)
-                            if not answer_match:
-                                continue
-                            correct_text = answer_match.group(1).strip()
-                            if not correct_text or len(correct_text) < 1:
-                                continue
-
-                            # Remove the button element to get clean question text
-                            btn.decompose()
+                            # Remove ALL buttons from soup to get clean question text
+                            for b in block_soup.find_all('input', class_='santosh'):
+                                b.decompose()
                             raw_text = block_soup.get_text(separator=' ', strip=True)
                             question_text = re.sub(r'^\d+[\s\.\)]+', '', raw_text).strip()
                             question_text = re.sub(r'\s+', ' ', question_text).strip()
@@ -210,6 +268,87 @@ class Command(BaseCommand):
                                 'D': 'All of the above',
                             }
 
+                            parsed_questions.append({
+                                'text': question_text,
+                                'options': options_dict,
+                                'correct_answer': 'A',
+                            })
+
+                    # ================================================
+                    # FORMAT C: quiz_container divs (question + bold answer)
+                    # Structure: <div class="single enabled"><div class="questionNum">N</div>Q text<br><b>Answer</b></div>
+                    # ================================================
+                    elif quiz_container_divs:
+                        self.stdout.write(f"  [Format C - quiz_container] Found {len(quiz_container_divs)} items.")
+                        for container in quiz_container_divs:
+                            # Remove question number div
+                            num_div = container.find(class_='questionNum')
+                            if num_div:
+                                num_div.decompose()
+
+                            # Extract bold answer
+                            bold = container.find('b')
+                            correct_text = bold.get_text(strip=True) if bold else None
+                            if bold:
+                                bold.decompose()
+
+                            if not correct_text:
+                                continue
+
+                            question_text = container.get_text(separator=' ', strip=True)
+                            question_text = re.sub(r'^\d+[\s\.\)]+', '', question_text).strip()
+                            question_text = re.sub(r'\s+', ' ', question_text).strip()
+
+                            if not question_text or len(question_text) < 8:
+                                continue
+
+                            short_correct = correct_text[:50]
+                            options_dict = {
+                                'A': correct_text,
+                                'B': f'Not {short_correct}' if len(correct_text) > 2 else 'Option B',
+                                'C': 'None of the above',
+                                'D': 'All of the above',
+                            }
+                            parsed_questions.append({
+                                'text': question_text,
+                                'options': options_dict,
+                                'correct_answer': 'A',
+                            })
+
+                    # ================================================
+                    # FORMAT D: Inline Q - <b>Answer</b> pattern
+                    # Structure: "1. Question text - <b>Answer</b><br/>" repeated
+                    # ================================================
+                    elif has_format_d:
+                        self.stdout.write(f"  [Format D - inline bold] Parsing Q-Answer pairs.")
+                        # Match patterns like: "Question text - <b>Answer text</b>"
+                        # Also handle ":" separator: "Question: <b>Answer</b>"
+                        qa_pattern = re.compile(
+                            r'(?:\d+\.\s*)?(.+?)\s*[:\-–]\s*<b>([^<]+)</b>',
+                            re.IGNORECASE | re.DOTALL
+                        )
+                        for m in qa_pattern.finditer(html_content):
+                            q_raw = m.group(1).strip()
+                            correct_text = m.group(2).strip()
+
+                            # Clean HTML tags from question
+                            q_soup = BeautifulSoup(q_raw, 'html.parser')
+                            question_text = q_soup.get_text(separator=' ', strip=True)
+                            question_text = re.sub(r'^\d+[\s\.\)]+', '', question_text).strip()
+                            question_text = re.sub(r'\s+', ' ', question_text).strip()
+
+                            if not question_text or len(question_text) < 8 or not correct_text:
+                                continue
+                            if 'http' in question_text or 'style=' in question_text:
+                                continue
+
+                            short_correct = correct_text[:50]
+                            options_dict = {
+                                'A': correct_text,
+                                'B': f'Not {short_correct}' if len(correct_text) > 2 else 'Option B',
+                                'C': 'None of the above',
+                                'D': 'All of the above',
+                            }
                             parsed_questions.append({
                                 'text': question_text,
                                 'options': options_dict,
