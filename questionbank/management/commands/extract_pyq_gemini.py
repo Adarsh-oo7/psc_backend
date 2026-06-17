@@ -5,6 +5,7 @@ import time
 import hashlib
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
+from django.conf import settings
 from questionbank.models import Question, Topic, Exam, ExamCategory, PreviousYearPaper
 
 class Command(BaseCommand):
@@ -42,7 +43,30 @@ class Command(BaseCommand):
         paper_title = options.get('paper_title')
         approve_all = options['approve_all']
 
-        if not os.path.exists(pdf_path):
+        if pdf_path.startswith(('http://', 'https://')):
+            self.stdout.write(f"Downloading PDF from: {pdf_path}...")
+            import requests
+            try:
+                filename = pdf_path.split('/')[-1]
+                if '?' in filename:
+                    filename = filename.split('?')[0]
+                if not filename.endswith('.pdf'):
+                    filename = f"downloaded_paper_{int(time.time())}.pdf"
+                
+                os.makedirs(os.path.join(settings.MEDIA_ROOT, 'pyq_papers'), exist_ok=True)
+                local_path = os.path.join(settings.MEDIA_ROOT, 'pyq_papers', filename)
+                
+                response = requests.get(pdf_path, timeout=30)
+                if response.status_code == 200:
+                    with open(local_path, 'wb') as f:
+                        f.write(response.content)
+                    pdf_path = local_path
+                    self.stdout.write(f"Successfully downloaded to: {pdf_path}")
+                else:
+                    raise CommandError(f"Failed to download PDF: HTTP {response.status_code}")
+            except Exception as e:
+                raise CommandError(f"Error downloading PDF: {e}")
+        elif not os.path.exists(pdf_path):
             raise CommandError(f"PDF file not found at: {pdf_path}")
 
         # Get the default category and create/fetch the Exam
