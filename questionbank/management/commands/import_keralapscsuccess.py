@@ -12,15 +12,17 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument('--max-posts', type=int, default=50, help="Max number of posts to fetch")
+        parser.add_argument('--domain', type=str, default='keralapscsuccess.blogspot.com', help="Blogger blogspot domain name")
         parser.add_argument('--dry-run', action='store_true', help="Dry run without saving to database")
 
     def handle(self, *args, **options):
         max_posts = options['max_posts']
+        domain = options['domain']
         dry_run = options['dry_run']
 
-        self.stdout.write("Starting ingestion from keralapscsuccess.blogspot.com...")
+        self.stdout.write(f"Starting ingestion from {domain}...")
 
-        feed_url = f"https://keralapscsuccess.blogspot.com/feeds/posts/default?alt=json&max-results={max_posts}"
+        feed_url = f"https://{domain}/feeds/posts/default?alt=json&max-results={max_posts}"
         
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
