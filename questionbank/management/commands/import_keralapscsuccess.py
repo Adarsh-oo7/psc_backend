@@ -79,53 +79,75 @@ class Command(BaseCommand):
                     line = text_lines[i]
                     # Look for lines starting with a number e.g. "1." or "1:"
                     if re.match(r'^\d+[\s\.\:]+', line):
-                        # Attempt to parse MCQ with next 5 lines
-                        if i + 5 < len(text_lines):
+                        # Attempt to parse MCQ with next 4 lines
+                        if i + 4 < len(text_lines):
                             opt_a = text_lines[i+1]
                             opt_b = text_lines[i+2]
                             opt_c = text_lines[i+3]
                             opt_d = text_lines[i+4]
-                            ans_line = text_lines[i+5]
 
-                            # Match options format like A) or A.
-                            match_a = re.match(r'^[aA][\)\.]\s*(.*)', opt_a)
-                            match_b = re.match(r'^[bB][\)\.]\s*(.*)', opt_b)
-                            match_c = re.match(r'^[cC][\)\.]\s*(.*)', opt_c)
-                            match_d = re.match(r'^[dD][\)\.]\s*(.*)', opt_d)
-                            match_ans = re.match(r'^(?:answer|ans)\s*[:\-–]?\s*(.*)', ans_line, re.I)
+                            # Match options format like A) or A. or [A] or A Option
+                            match_a = re.match(r'^[aA][\)\.\]\s]\s*(.*)', opt_a)
+                            match_b = re.match(r'^[bB][\)\.\]\s]\s*(.*)', opt_b)
+                            match_c = re.match(r'^[cC][\)\.\]\s]\s*(.*)', opt_c)
+                            match_d = re.match(r'^[dD][\)\.\]\s]\s*(.*)', opt_d)
 
-                            if match_a and match_b and match_c and match_d and match_ans:
-                                q_text = re.sub(r'^\d+[\s\.\:]+', '', line).strip()
-                                q_text = re.sub(r'\s+', ' ', q_text).strip()
+                            if match_a and match_b and match_c and match_d:
+                                ans_val = None
+                                skip_lines = 5
 
-                                val_a = match_a.group(1).strip()
-                                val_b = match_b.group(1).strip()
-                                val_c = match_c.group(1).strip()
-                                val_d = match_d.group(1).strip()
-                                ans_val = match_ans.group(1).strip()
+                                # Check if i+5 is the answer line
+                                if i + 5 < len(text_lines):
+                                    ans_line = text_lines[i+5]
+                                    match_ans = re.match(r'^(?:answer|ans|👉|👇|ഉത്തരം)\s*[:\-–]?\s*(.*)', ans_line, re.I)
+                                    if match_ans:
+                                        ans_val = match_ans.group(1).strip()
+                                        if not ans_val and i + 6 < len(text_lines): # "👉" on line 5, letter on line 6
+                                            ans_val = text_lines[i+6].strip()
+                                            skip_lines = 7
+                                        else:
+                                            skip_lines = 6
+                                    elif ans_line.strip().upper() in ('A', 'B', 'C', 'D'):
+                                        ans_val = ans_line.strip()
+                                        skip_lines = 6
 
-                                # Clean Option suffix from answer if present (e.g. "Option B" -> "B")
-                                ans_clean = re.sub(r'^option\s*', '', ans_val, flags=re.I).strip().upper()
+                                # If still not found, check if i+6 is the answer line
+                                if ans_val is None and i + 6 < len(text_lines):
+                                    ans_line2 = text_lines[i+6]
+                                    if ans_line2.strip().upper() in ('A', 'B', 'C', 'D'):
+                                        ans_val = ans_line2.strip()
+                                        skip_lines = 7
 
-                                # Map correct answer letter
-                                correct_letter = 'A'
-                                if ans_clean in ('A', 'B', 'C', 'D'):
-                                    correct_letter = ans_clean
-                                else:
-                                    # Fallback substring matching
-                                    options_dict = {'A': val_a, 'B': val_b, 'C': val_c, 'D': val_d}
-                                    for letter, opt_val in options_dict.items():
-                                        if opt_val.lower().strip() in ans_val.lower().strip():
-                                            correct_letter = letter
-                                            break
+                                if ans_val is not None:
+                                    q_text = re.sub(r'^\d+[\s\.\:]+', '', line).strip()
+                                    q_text = re.sub(r'\s+', ' ', q_text).strip()
 
-                                parsed_questions.append({
-                                    'text': q_text,
-                                    'options': {'A': val_a, 'B': val_b, 'C': val_c, 'D': val_d},
-                                    'correct_answer': correct_letter,
-                                })
-                                i += 6
-                                continue
+                                    val_a = match_a.group(1).strip()
+                                    val_b = match_b.group(1).strip()
+                                    val_c = match_c.group(1).strip()
+                                    val_d = match_d.group(1).strip()
+
+                                    ans_clean = re.sub(r'^option\s*', '', ans_val, flags=re.I).strip().upper()
+
+                                    # Map correct answer letter
+                                    correct_letter = 'A'
+                                    if ans_clean in ('A', 'B', 'C', 'D'):
+                                        correct_letter = ans_clean
+                                    else:
+                                        # Fallback substring matching
+                                        options_dict = {'A': val_a, 'B': val_b, 'C': val_c, 'D': val_d}
+                                        for letter, opt_val in options_dict.items():
+                                            if opt_val.lower().strip() in ans_val.lower().strip():
+                                                correct_letter = letter
+                                                break
+
+                                    parsed_questions.append({
+                                        'text': q_text,
+                                        'options': {'A': val_a, 'B': val_b, 'C': val_c, 'D': val_d},
+                                        'correct_answer': correct_letter,
+                                    })
+                                    i += skip_lines
+                                    continue
                     i += 1
 
                 if not parsed_questions:
