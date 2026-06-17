@@ -5,7 +5,7 @@ import time
 import hashlib
 from django.core.management.base import BaseCommand, CommandError
 from django.utils.text import slugify
-from questionbank.models import Question, Topic, Exam, ExamCategory
+from questionbank.models import Question, Topic, Exam, ExamCategory, PreviousYearPaper
 
 class Command(BaseCommand):
     help = "Extracts Malayalam questions from legacy/garbled PDFs using Gemini API"
@@ -15,6 +15,7 @@ class Command(BaseCommand):
         parser.add_argument('--limit-pages', type=int, default=0, help="Limit the number of pages to process (0 for all)")
         parser.add_argument('--exam', type=str, default="LGS General Exam", help="Name of the exam to associate questions with")
         parser.add_argument('--year', type=int, default=2024, help="Year of the exam")
+        parser.add_argument('--paper-title', type=str, help="Title of the PreviousYearPaper to link questions to")
         parser.add_argument('--approve-all', action='store_true', help="Set question status to approved directly")
 
     def handle(self, *args, **options):
@@ -38,6 +39,7 @@ class Command(BaseCommand):
         limit_pages = options['limit_pages']
         exam_name = options['exam']
         year = options['year']
+        paper_title = options.get('paper_title')
         approve_all = options['approve_all']
 
         if not os.path.exists(pdf_path):
@@ -57,6 +59,18 @@ class Command(BaseCommand):
                 'year': year
             }
         )
+
+        paper_obj = None
+        if paper_title:
+            rel_pdf_path = os.path.join('pyq_papers', os.path.basename(pdf_path))
+            paper_obj, _ = PreviousYearPaper.objects.get_or_create(
+                title=paper_title,
+                defaults={
+                    'exam': exam_obj,
+                    'year': year,
+                    'pdf_file': rel_pdf_path
+                }
+            )
 
         # Build list of valid topics to feed to Gemini for classification
         topics = Topic.objects.all()
@@ -191,8 +205,11 @@ Return ONLY a valid JSON array of objects with the structure:
                         normalized = f"{normalized}||{opts_str}"
                     text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
-                    if Question.objects.filter(text_hash=text_hash).exists():
+                    existing_q = Question.objects.filter(text_hash=text_hash).first()
+                    if existing_q:
                         total_skipped += 1
+                        if paper_obj:
+                            paper_obj.questions.add(existing_q)
                         continue
 
                     # Create and save question
@@ -211,6 +228,8 @@ Return ONLY a valid JSON array of objects with the structure:
                         text_hash=text_hash
                     )
                     q.exams.add(exam_obj)
+                    if paper_obj:
+                        paper_obj.questions.add(q)
                     total_extracted += 1
 
             except Exception as e:
