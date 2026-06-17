@@ -176,7 +176,7 @@ class Command(BaseCommand):
                         mcq_containers = soup.find_all(class_='quiz-container')
 
                     # Format B: Old santosh-button Q&A reveal format
-                    santosh_inputs = soup.find_all('input', class_='santosh')
+                    santosh_inputs = soup.find_all('input', class_=re.compile(r'^santh?osh$'))
 
                     # Format C: quiz_container divs (no buttons, question + bold answer in .single.enabled)
                     quiz_container_divs = soup.find_all('div', class_='single') if not mcq_containers and not santosh_inputs else []
@@ -319,7 +319,7 @@ class Command(BaseCommand):
                         structural_blocks = []
                         if containers:
                             for container in containers:
-                                if container.find('input', class_='santosh'):
+                                if container.find('input', class_=re.compile(r'^santh?osh$')):
                                     structural_blocks.append(container)
 
                         if len(structural_blocks) >= 3:
@@ -332,7 +332,7 @@ class Command(BaseCommand):
 
                         for block_soup in blocks_soup:
                             # Find the FIRST non-Solution santosh button in this block
-                            all_btns = block_soup.find_all('input', class_='santosh')
+                            all_btns = block_soup.find_all('input', class_=re.compile(r'^santh?osh$'))
                             btn = None
                             correct_text = None
                             for candidate_btn in all_btns:
@@ -348,7 +348,7 @@ class Command(BaseCommand):
                                 continue
 
                             # Remove ALL buttons from block_soup to get clean question text
-                            for b in block_soup.find_all('input', class_='santosh'):
+                            for b in block_soup.find_all('input', class_=re.compile(r'^santh?osh$')):
                                 b.decompose()
 
                             # Decompose any questionNum divs
