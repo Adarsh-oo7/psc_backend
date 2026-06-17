@@ -1,17 +1,19 @@
 import json
 import re
 import traceback
+import hashlib
 from django.contrib import admin, messages
 from django.urls import path
 from django.shortcuts import render, redirect
 from django.utils.html import format_html
+from django.db.models import Q
 
 # --- Import all necessary models and the form ---
 from .models import (
     ExamCategory, Exam, Topic, Question, 
     UserAnswer, Bookmark, Report, UserProfile, ExamSyllabus
 )
-from .forms import BulkQuestionUploadForm
+from .forms import BulkQuestionUploadForm, QuestionForm
 
 
 #===================================================================
@@ -39,8 +41,10 @@ class TopicAdmin(admin.ModelAdmin):
     list_filter = ('institute',)
     search_fields = ('name',)
 
+
 @admin.register(Question)
 class QuestionAdmin(admin.ModelAdmin):
+    form = QuestionForm
     list_display = ('text', 'display_exams', 'topic', 'sub_topic', 'difficulty', 'status', 'source', 'verified', 'is_verified')
     list_filter = ('status', 'source', 'verified', 'is_verified', 'exams', 'topic', 'difficulty', 'institute')
     search_fields = ('text',)
@@ -51,8 +55,8 @@ class QuestionAdmin(admin.ModelAdmin):
     fieldsets = (
         ('Core Details', {'fields': ('text', 'topic', 'sub_topic')}),
         ('Question Content', {
-            'fields': ('options', 'correct_answer', 'explanation'),
-            'description': """<p style="font-size: 1.1em;"><strong>Options Format:</strong> Please enter the options as a valid JSON object.</p><p>Example:</p><pre><code>{\n  "A": "Option text 1",\n  "B": "Option text 2",\n  "C": "Option text 3",\n  "D": "Option text 4"\n}</code></pre>"""
+            'fields': ('option_a', 'option_b', 'option_c', 'option_d', 'correct_answer', 'explanation'),
+            'description': """<p style="font-size: 1.1em;">Enter options A, B, C, D and select the correct answer.</p>"""
         }),
         ('Categorization & Difficulty', {'fields': ('difficulty', 'exams', 'institute')}),
         ('Submission Info', {'fields': ('submitted_by', 'status', 'source', 'verified', 'is_verified', 'text_hash')}),
@@ -277,8 +281,13 @@ class QuestionAdmin(admin.ModelAdmin):
                         print(f"Question {question_num}: {text[:50]}...")
                         print(f"Suitable for: '{suitable_for}'")
                         
-                        # Check for duplicates
-                        if Question.objects.filter(text__iexact=text).exists():
+                        # Calculate text hash to check duplicate
+                        normalized = re.sub(r'[^\w\s]', '', text).lower().strip()
+                        normalized = re.sub(r'\s+', ' ', normalized)
+                        text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+
+                        # Check for duplicates using hash or exact match
+                        if Question.objects.filter(Q(text_hash=text_hash) | Q(text__iexact=text)).exists():
                             print(f"Skipping duplicate: {text[:50]}")
                             skipped_count += 1
                             continue
@@ -590,19 +599,29 @@ class DailyExamAdmin(admin.ModelAdmin):
                 for line in lines:
                     parts = [p.strip() for p in line.split('|')]
                     if len(parts) >= 6:
-                        question = Question.objects.create(
-                            text=parts[0],
-                            options={
-                                'A': parts[1],
-                                'B': parts[2],
-                                'C': parts[3],
-                                'D': parts[4],
-                            },
-                            correct_answer=parts[5].upper(),
-                            explanation=parts[6] if len(parts) > 6 else '',
-                            topic=default_topic,
-                            difficulty='medium'
-                        )
+                        text = parts[0]
+                        
+                        # Calculate text hash to check duplicate
+                        normalized = re.sub(r'[^\w\s]', '', text).lower().strip()
+                        normalized = re.sub(r'\s+', ' ', normalized)
+                        text_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
+                        
+                        # Check if duplicate question already exists, if so reuse it
+                        question = Question.objects.filter(Q(text_hash=text_hash) | Q(text__iexact=text)).first()
+                        if not question:
+                            question = Question.objects.create(
+                                text=text,
+                                options={
+                                    'A': parts[1],
+                                    'B': parts[2],
+                                    'C': parts[3],
+                                    'D': parts[4],
+                                },
+                                correct_answer=parts[5].upper(),
+                                explanation=parts[6] if len(parts) > 6 else '',
+                                topic=default_topic,
+                                difficulty='medium'
+                            )
                         created_questions.append(question)
                 
                 if created_questions:
