@@ -17,7 +17,7 @@ from institutes.models import Institute
 class ExamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exam
-        fields = ['id', 'name', 'year', 'duration_minutes']
+        fields = ['id', 'name', 'slug', 'year', 'duration_minutes']
 
 class ExamCategorySerializer(serializers.ModelSerializer):
     exams = ExamSerializer(many=True, read_only=True)
