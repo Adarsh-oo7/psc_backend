@@ -112,22 +112,54 @@ Return ONLY the JSON object.
 # ─── LLM Callers ─────────────────────────────────────────────────────────────
 
 def call_gemini(prompt: str) -> str:
-    """Call Google Gemini API. Returns raw text or raises on failure."""
+    """
+    Call Google Gemini API.
+    Tries gemini-2.0-flash first; if 429, retries with gemini-1.5-flash
+    with exponential backoff (up to 3 attempts).
+    Returns raw text or raises on failure.
+    """
+    import time
+
     api_key = os.environ.get('GEMINI_API_KEY')
     if not api_key:
         raise ValueError("GEMINI_API_KEY not set in environment")
 
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={api_key}"
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}]
-    }
+    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"]
+    payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
-    resp = requests.post(url, json=payload, timeout=40)
-    resp.raise_for_status()
+    last_exc = None
+    for model in models:
+        url = (
+            f"https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{model}:generateContent?key={api_key}"
+        )
+        for attempt in range(3):
+            try:
+                resp = requests.post(url, json=payload, timeout=40)
+                if resp.status_code == 429:
+                    wait = (2 ** attempt) * 5  # 5s, 10s, 20s
+                    logger.warning(
+                        "[current_affairs][gemini] 429 rate limit on %s, waiting %ds (attempt %d)...",
+                        model, wait, attempt + 1
+                    )
+                    time.sleep(wait)
+                    continue  # retry same model
+                resp.raise_for_status()
+                data = resp.json()
+                text = data["candidates"][0]["content"]["parts"][0]["text"]
+                logger.info("[current_affairs] Gemini succeeded with model: %s", model)
+                return text
+            except requests.exceptions.HTTPError as e:
+                if resp.status_code == 429:
+                    last_exc = e
+                    continue
+                last_exc = e
+                break  # non-429 HTTP error — try next model immediately
+            except Exception as e:
+                last_exc = e
+                break  # any other error — try next model
 
-    data = resp.json()
-    text = data["candidates"][0]["content"]["parts"][0]["text"]
-    return text
+    raise last_exc or RuntimeError("Gemini: all models and retries exhausted")
 
 
 def call_glm_modal(prompt: str) -> str:
