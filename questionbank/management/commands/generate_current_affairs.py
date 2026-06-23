@@ -111,12 +111,39 @@ Return ONLY the JSON object.
 
 # ─── LLM Callers ─────────────────────────────────────────────────────────────
 
+def call_groq(prompt: str) -> str:
+    """
+    Call Groq API using llama-3.3-70b-versatile.
+    Already used by this server for AI explanations — very generous free tier.
+    """
+    api_key = os.environ.get('GROQ_API_KEY')
+    if not api_key:
+        raise ValueError("GROQ_API_KEY not set in environment")
+
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "llama-3.3-70b-versatile",
+        "messages": [{"role": "user", "content": prompt}],
+        "max_tokens": 4096,
+        "temperature": 0.7,
+    }
+
+    resp = requests.post(url, json=payload, headers=headers, timeout=40)
+    resp.raise_for_status()
+    data = resp.json()
+    text = data["choices"][0]["message"]["content"]
+    logger.info("[current_affairs] Groq succeeded.")
+    return text
+
+
 def call_gemini(prompt: str) -> str:
     """
     Call Google Gemini API.
-    Tries gemini-2.0-flash first; if 429, retries with gemini-1.5-flash
-    with exponential backoff (up to 3 attempts).
-    Returns raw text or raises on failure.
+    Tries gemini-2.0-flash then gemini-1.5-flash with exponential backoff on 429.
     """
     import time
 
@@ -124,7 +151,7 @@ def call_gemini(prompt: str) -> str:
     if not api_key:
         raise ValueError("GEMINI_API_KEY not set in environment")
 
-    models = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-flash-latest"]
+    models = ["gemini-2.0-flash", "gemini-1.5-flash"]
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
 
     last_exc = None
@@ -143,21 +170,20 @@ def call_gemini(prompt: str) -> str:
                         model, wait, attempt + 1
                     )
                     time.sleep(wait)
-                    continue  # retry same model
+                    continue
                 resp.raise_for_status()
                 data = resp.json()
                 text = data["candidates"][0]["content"]["parts"][0]["text"]
                 logger.info("[current_affairs] Gemini succeeded with model: %s", model)
                 return text
             except requests.exceptions.HTTPError as e:
-                if resp.status_code == 429:
-                    last_exc = e
-                    continue
                 last_exc = e
-                break  # non-429 HTTP error — try next model immediately
+                if hasattr(resp, 'status_code') and resp.status_code == 429:
+                    continue
+                break  # non-429 — try next model
             except Exception as e:
                 last_exc = e
-                break  # any other error — try next model
+                break
 
     raise last_exc or RuntimeError("Gemini: all models and retries exhausted")
 
@@ -176,32 +202,37 @@ def call_glm_modal(prompt: str) -> str:
     payload = {
         "model": "zai-org/GLM-5.1-FP8",
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 500,
+        "max_tokens": 4096,
     }
 
     resp = requests.post(url, json=payload, headers=headers, timeout=40)
     resp.raise_for_status()
-
     data = resp.json()
     text = data["choices"][0]["message"]["content"]
     return text
 
 
-def fetch_current_affairs_text(prompt: str) -> tuple[str, str]:
+def fetch_current_affairs_text(prompt: str) -> tuple:
     """
-    Try Gemini first, fall back to GLM-5.1 on Modal.
+    LLM Router: Groq (primary) -> Gemini (secondary) -> GLM-5.1 Modal (tertiary).
     Returns (raw_text, provider_name).
-    Raises RuntimeError if both fail.
+    Raises RuntimeError if all backends fail.
     """
-    # ── Primary: Gemini ──────────────────────────────────────────────────────
+    # ── Primary: Groq ────────────────────────────────────────────────────────
+    try:
+        text = call_groq(prompt)
+        return text, "groq"
+    except Exception as e:
+        logger.error("[current_affairs][groq] Failed: %s", e)
+
+    # ── Secondary: Gemini ─────────────────────────────────────────────────────
     try:
         text = call_gemini(prompt)
-        logger.info("[current_affairs] Gemini succeeded.")
         return text, "gemini"
     except Exception as e:
         logger.error("[current_affairs][gemini] Failed: %s", e)
 
-    # ── Backup: GLM-5.1 on Modal ─────────────────────────────────────────────
+    # ── Tertiary: GLM-5.1 on Modal ────────────────────────────────────────────
     try:
         text = call_glm_modal(prompt)
         logger.info("[current_affairs] GLM-5.1 (Modal) succeeded.")
@@ -210,6 +241,7 @@ def fetch_current_affairs_text(prompt: str) -> tuple[str, str]:
         logger.error("[current_affairs][glm_modal] Failed: %s", e)
 
     raise RuntimeError("all_llm_backends_failed")
+
 
 
 # ─── Validation helpers ───────────────────────────────────────────────────────
