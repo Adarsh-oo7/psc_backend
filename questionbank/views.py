@@ -299,11 +299,28 @@ class GenerateMockExamView(views.APIView):
     def get(self, request, exam_id):
         exam = get_object_or_404(Exam, pk=exam_id)
         syllabus_parts = exam.syllabus_parts.all()
-        all_questions = []
+        if not syllabus_parts.exists():
+            words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+            similar_exams = Exam.objects.filter(id=exam.id)
+            if words:
+                q_obj = Q()
+                for word in words:
+                    q_obj |= Q(name__icontains=word)
+                similar_exams = Exam.objects.filter(q_obj)
+            syllabus_parts = ExamSyllabus.objects.filter(exam__in=similar_exams)
+            
+        topic_num_questions = {}
         for part in syllabus_parts:
-            # Get random questions for each topic as defined in the syllabus
-            questions = list(Question.objects.filter(topic=part.topic).order_by('?')[:part.num_questions])
+            topic_num_questions[part.topic_id] = max(
+                topic_num_questions.get(part.topic_id, 0),
+                part.num_questions
+            )
+            
+        all_questions = []
+        for topic_id, num_qs in topic_num_questions.items():
+            questions = list(Question.objects.filter(topic_id=topic_id).order_by('?')[:num_qs])
             all_questions.extend(questions)
+            
         shuffle(all_questions)
         response_data = {
             'exam_name': exam.name, 'duration_minutes': exam.duration_minutes,
@@ -827,7 +844,15 @@ class ModelExamListView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
     def get_queryset(self):
         exam_id = self.kwargs['exam_id']
-        return ModelExam.objects.filter(exam_id=exam_id)
+        exam = get_object_or_404(Exam, pk=exam_id)
+        words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+        similar_exams = Exam.objects.filter(id=exam.id)
+        if words:
+            q_obj = Q()
+            for word in words:
+                q_obj |= Q(name__icontains=word)
+            similar_exams = Exam.objects.filter(q_obj)
+        return ModelExam.objects.filter(exam__in=similar_exams)
 
 class ModelExamDetailView(generics.RetrieveAPIView):
     """Returns the details and all questions for a single model exam."""
@@ -908,7 +933,15 @@ class PYQListView(generics.ListAPIView):
     def get_queryset(self):
         # Returns all PYQ papers for a specific main exam
         exam_id = self.kwargs['exam_id']
-        return PreviousYearPaper.objects.filter(exam_id=exam_id)
+        exam = get_object_or_404(Exam, pk=exam_id)
+        words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+        similar_exams = Exam.objects.filter(id=exam.id)
+        if words:
+            q_obj = Q()
+            for word in words:
+                q_obj |= Q(name__icontains=word)
+            similar_exams = Exam.objects.filter(q_obj)
+        return PreviousYearPaper.objects.filter(exam__in=similar_exams)
 
 
 
