@@ -332,7 +332,8 @@ class ExamAnnouncementSerializer(serializers.ModelSerializer):
 class CurrentAffairsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CurrentAffairs
-        fields = ['id', 'title', 'slug', 'content', 'category', 'publication_date', 'psc_likelihood', 'ai_summary', 'created_at']
+        fields = ['id', 'title', 'slug', 'content', 'category', 'publication_date',
+                  'psc_likelihood', 'ai_summary', 'source_url', 'mcq', 'created_at']
 
 
 from .models import StudyFeedCard

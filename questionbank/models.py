@@ -361,8 +361,11 @@ class CurrentAffairs(models.Model):
     publication_date = models.DateField(default=timezone.now)
     psc_likelihood = models.CharField(max_length=10, choices=LIKELIHOOD_CHOICES, default='medium')
     ai_summary = models.TextField(blank=True, help_text="AI-generated summary")
+    source_url = models.URLField(max_length=500, blank=True, null=True, help_text="Credible news source URL")
+    mcq = models.JSONField(blank=True, null=True, help_text="AI-generated PSC-style MCQ")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
 
     class Meta:
         verbose_name_plural = "Current Affairs"
