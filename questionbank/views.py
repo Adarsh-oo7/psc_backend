@@ -294,19 +294,22 @@ class WeakAreaQuestionsView(generics.ListAPIView):
 # ===================================================================
 
 class GenerateMockExamView(views.APIView):
-    """Generates a full mock exam based on the ExamSyllabus."""
+    """Generates a full mock exam based on the ExamSyllabus, padded to exactly 100 questions."""
     permission_classes = [IsAuthenticated]
     def get(self, request, exam_id):
         exam = get_object_or_404(Exam, pk=exam_id)
         syllabus_parts = exam.syllabus_parts.all()
+        
+        # Find similar exams if direct syllabus doesn't exist
+        words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+        similar_exams = Exam.objects.filter(id=exam.id)
+        if words:
+            q_obj = Q()
+            for word in words:
+                q_obj |= Q(name__icontains=word)
+            similar_exams = Exam.objects.filter(q_obj)
+
         if not syllabus_parts.exists():
-            words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
-            similar_exams = Exam.objects.filter(id=exam.id)
-            if words:
-                q_obj = Q()
-                for word in words:
-                    q_obj |= Q(name__icontains=word)
-                similar_exams = Exam.objects.filter(q_obj)
             syllabus_parts = ExamSyllabus.objects.filter(exam__in=similar_exams)
             
         topic_num_questions = {}
@@ -317,9 +320,48 @@ class GenerateMockExamView(views.APIView):
             )
             
         all_questions = []
+        seen_ids = set()
+        
+        # 1. Primary: Load questions according to syllabus topic weightage
         for topic_id, num_qs in topic_num_questions.items():
+            if num_qs <= 0:
+                continue
             questions = list(Question.objects.filter(topic_id=topic_id).order_by('?')[:num_qs])
-            all_questions.extend(questions)
+            for q in questions:
+                if q.id not in seen_ids:
+                    all_questions.append(q)
+                    seen_ids.add(q.id)
+                    
+        # 2. Pad to exactly 100 if we have a deficit
+        # Level 1 padding: Get more questions from the syllabus topics
+        if len(all_questions) < 100:
+            topic_ids = list(topic_num_questions.keys())
+            if topic_ids:
+                additional_qs = list(Question.objects.filter(topic_id__in=topic_ids).exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
+                for q in additional_qs:
+                    if q.id not in seen_ids:
+                        all_questions.append(q)
+                        seen_ids.add(q.id)
+                        
+        # Level 2 padding: Get questions associated with this exam or similar exams
+        if len(all_questions) < 100:
+            exam_qs = list(Question.objects.filter(exams__in=similar_exams).exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
+            for q in exam_qs:
+                if q.id not in seen_ids:
+                    all_questions.append(q)
+                    seen_ids.add(q.id)
+                    
+        # Level 3 padding: Get any general/active questions in the database
+        if len(all_questions) < 100:
+            any_qs = list(Question.objects.exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
+            for q in any_qs:
+                if q.id not in seen_ids:
+                    all_questions.append(q)
+                    seen_ids.add(q.id)
+                    
+        # If we somehow exceeded 100 questions (due to weightage sum), slice it down
+        if len(all_questions) > 100:
+            all_questions = all_questions[:100]
             
         shuffle(all_questions)
         response_data = {
