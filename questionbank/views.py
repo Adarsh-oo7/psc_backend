@@ -193,6 +193,27 @@ class TopicListView(generics.ListAPIView):
         base_query = Q(institute__isnull=True)
         if user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile.institute:
             base_query |= Q(institute=user.userprofile.institute)
+            
+        preferred_exams = Exam.objects.none()
+        if user and user.is_authenticated and hasattr(user, 'userprofile'):
+            user_prefs = user.userprofile.preferred_exams.all()
+            if user_prefs.exists():
+                q_obj = Q()
+                for exam in user_prefs:
+                    q_obj |= Q(id=exam.id)
+                    words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+                    if words:
+                        sub_q = Q()
+                        for word in words:
+                            sub_q |= Q(name__icontains=word)
+                        q_obj |= sub_q
+                preferred_exams = Exam.objects.filter(q_obj).distinct()
+
+        if preferred_exams.exists():
+            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=preferred_exams).distinct()
+            if syllabus_topics.exists():
+                base_query &= Q(id__in=syllabus_topics)
+                
         return Topic.objects.filter(base_query).distinct().order_by('name')
 
 # In questionbank/views.py
@@ -443,7 +464,7 @@ class MyProgressDashboardView(views.APIView):
             
             report_title = f"Focus Report: {', '.join([exam.name for exam in focus_exams])}"
             # Filter answers to only include questions from the user's focus exams
-            answers_to_process = all_answers.filter(question__exams__in=focus_exams)
+            answers_to_process = all_answers.filter(question__exams__in=focus_exams).distinct()
         
         # --- Common badges helper ---
         import datetime
@@ -1402,6 +1423,27 @@ class TopicListView(generics.ListAPIView):
         base_query = Q(institute__isnull=True)
         if hasattr(user, 'userprofile') and user.userprofile.institute:
             base_query |= Q(institute=user.userprofile.institute)
+            
+        preferred_exams = Exam.objects.none()
+        if user and user.is_authenticated and hasattr(user, 'userprofile'):
+            user_prefs = user.userprofile.preferred_exams.all()
+            if user_prefs.exists():
+                q_obj = Q()
+                for exam in user_prefs:
+                    q_obj |= Q(id=exam.id)
+                    words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+                    if words:
+                        sub_q = Q()
+                        for word in words:
+                            sub_q |= Q(name__icontains=word)
+                        q_obj |= sub_q
+                preferred_exams = Exam.objects.filter(q_obj).distinct()
+
+        if preferred_exams.exists():
+            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=preferred_exams).distinct()
+            if syllabus_topics.exists():
+                base_query &= Q(id__in=syllabus_topics)
+                
         return Topic.objects.filter(base_query).distinct().order_by('name')
 
     def get_serializer_context(self):
@@ -1429,6 +1471,28 @@ class TopicQuestionsView(generics.ListAPIView):
             base_query |= Q(topic=topic, institute=user.userprofile.institute)
             
         qs = Question.objects.filter(base_query).distinct()
+        
+        preferred_exams = Exam.objects.none()
+        if user and user.is_authenticated and hasattr(user, 'userprofile'):
+            user_prefs = user.userprofile.preferred_exams.all()
+            if user_prefs.exists():
+                q_obj = Q()
+                for exam in user_prefs:
+                    q_obj |= Q(id=exam.id)
+                    words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+                    if words:
+                        sub_q = Q()
+                        for word in words:
+                            sub_q |= Q(name__icontains=word)
+                        q_obj |= sub_q
+                preferred_exams = Exam.objects.filter(q_obj).distinct()
+
+        if preferred_exams.exists():
+            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=preferred_exams).distinct()
+            exam_filter = Q(exams__in=preferred_exams)
+            if syllabus_topics.exists():
+                exam_filter |= Q(topic__in=syllabus_topics)
+            qs = qs.filter(exam_filter).distinct()
         
         difficulty = self.request.query_params.get('difficulty')
         if difficulty in ('easy', 'medium', 'hard'):
@@ -1609,6 +1673,26 @@ class TopicSummaryView(generics.ListAPIView):
         if hasattr(user, 'userprofile') and user.userprofile.institute:
             base_query |= Q(institute=user.userprofile.institute)
             
+        preferred_exams = Exam.objects.none()
+        if user and user.is_authenticated and hasattr(user, 'userprofile'):
+            user_prefs = user.userprofile.preferred_exams.all()
+            if user_prefs.exists():
+                q_obj = Q()
+                for exam in user_prefs:
+                    q_obj |= Q(id=exam.id)
+                    words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+                    if words:
+                        sub_q = Q()
+                        for word in words:
+                            sub_q |= Q(name__icontains=word)
+                        q_obj |= sub_q
+                preferred_exams = Exam.objects.filter(q_obj).distinct()
+
+        if preferred_exams.exists():
+            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=preferred_exams).distinct()
+            if syllabus_topics.exists():
+                base_query &= Q(id__in=syllabus_topics)
+                
         topics = Topic.objects.filter(base_query).distinct().order_by('name')
         progress_map = {
             tp.topic_id: tp for tp in TopicProgress.objects.filter(user=user)

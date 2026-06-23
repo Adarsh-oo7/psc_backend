@@ -11,6 +11,24 @@ class QuestionEngine:
     """
 
     @staticmethod
+    def _resolve_similar_exams(exams_queryset):
+        from .models import Exam
+        if not exams_queryset.exists():
+            return Exam.objects.none()
+            
+        q_obj = Q()
+        for exam in exams_queryset:
+            q_obj |= Q(id=exam.id)
+            words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+            if words:
+                sub_q = Q()
+                for word in words:
+                    sub_q |= Q(name__icontains=word)
+                q_obj |= sub_q
+                
+        return Exam.objects.filter(q_obj).distinct()
+
+    @staticmethod
     def get_questions_for_user(user, filters: dict, limit: int = None):
         """
         Returns questions filtered by criteria, prioritizing:
@@ -26,25 +44,25 @@ class QuestionEngine:
         queryset = Question.objects.filter(base_query)
 
         # Apply content filters
+        from .models import Exam, Topic
+        target_exams = Exam.objects.none()
+        
         if filters.get('exam_id'):
             exam_id = filters['exam_id']
-            exam_qs = queryset.filter(exams__id=exam_id)
-            if not exam_qs.exists():
-                from .models import Exam
-                exam = Exam.objects.filter(id=exam_id).first()
-                if exam:
-                    words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
-                    similar_exams = Exam.objects.none()
-                    if words:
-                        q_obj = Q()
-                        for word in words:
-                            q_obj |= Q(name__icontains=word)
-                        similar_exams = Exam.objects.filter(q_obj).exclude(id=exam_id)
-                    if similar_exams.exists():
-                        exam_qs = queryset.filter(exams__in=similar_exams)
-                    if not exam_qs.exists() and exam.category:
-                        exam_qs = queryset.filter(exams__category=exam.category)
-            queryset = exam_qs
+            exam_obj = Exam.objects.filter(id=exam_id)
+            if exam_obj.exists():
+                target_exams = QuestionEngine._resolve_similar_exams(exam_obj)
+        elif user and user.is_authenticated and not filters.get('exam_ids') and hasattr(user, 'userprofile'):
+            user_prefs = user.userprofile.preferred_exams.all()
+            if user_prefs.exists():
+                target_exams = QuestionEngine._resolve_similar_exams(user_prefs)
+                
+        if target_exams.exists():
+            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=target_exams).distinct()
+            exam_filter = Q(exams__in=target_exams)
+            if syllabus_topics.exists():
+                exam_filter |= Q(topic__in=syllabus_topics)
+            queryset = queryset.filter(exam_filter).distinct()
         if filters.get('topic_id'):
             queryset = queryset.filter(topic_id=filters['topic_id'])
         if filters.get('topic_ids'):
