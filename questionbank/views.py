@@ -952,9 +952,66 @@ from django.utils import timezone
 
 
 class ExamSyllabusListView(generics.ListAPIView):
-    queryset = Syllabus.objects.all()
     serializer_class = SyllabusSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        return Syllabus.objects.all()
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.get_queryset()
+        serializer = self.get_serializer(queryset, many=True)
+        data = list(serializer.data)
+        
+        # Auto-generate Syllabus text if ExamSyllabus exists but no Syllabus object
+        from .models import Exam, ExamSyllabus
+        from django.db.models import Q
+        
+        exams_with_syllabus = set(Syllabus.objects.values_list('exam_id', flat=True))
+        exams_with_parts = Exam.objects.filter(syllabus_parts__isnull=False).distinct()
+        
+        for exam in exams_with_parts:
+            # Check for similar exams to avoid duplicate listings
+            words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+            similar_exams_ids = [exam.id]
+            if words:
+                q_obj = Q()
+                for word in words:
+                    q_obj |= Q(name__icontains=word)
+                similar_exams_ids = list(Exam.objects.filter(q_obj).values_list('id', flat=True))
+                
+            has_existing = any(eid in exams_with_syllabus for eid in similar_exams_ids)
+            if has_existing:
+                continue
+                
+            # If we don't have a syllabus for this exam, let's auto-generate/mock one!
+            parts = ExamSyllabus.objects.filter(exam__in=Exam.objects.filter(id__in=similar_exams_ids))
+            if not parts.exists():
+                continue
+                
+            topics_desc = []
+            total_qs = 0
+            for part in parts:
+                topics_desc.append(f"- {part.topic.name} ({part.num_questions} questions)")
+                total_qs += part.num_questions
+                
+            details = f"Official Mock Exam Syllabus for {exam.name}.\n\n"
+            details += f"Total Questions: {total_qs}\n"
+            details += f"Duration: {exam.duration_minutes} minutes\n\n"
+            details += "Subject Weightages & Topics:\n"
+            details += "\n".join(sorted(list(set(topics_desc))))
+            
+            exams_with_syllabus.add(exam.id)
+            
+            data.append({
+                'id': -exam.id,
+                'exam': exam.id,
+                'exam_name': exam.name,
+                'details': details,
+                'pdf_file_url': None
+            })
+            
+        return Response(data)
 
 
 class ExamCalendarView(generics.ListAPIView):
