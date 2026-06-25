@@ -1005,14 +1005,14 @@ class ExamSyllabusListView(generics.ListAPIView):
         serializer = self.get_serializer(queryset, many=True)
         data = list(serializer.data)
         
-        # Auto-generate Syllabus text if ExamSyllabus exists but no Syllabus object
+        # Auto-generate Syllabus text if no direct Syllabus object exists
         from .models import Exam, ExamSyllabus
         from django.db.models import Q
         
         exams_with_syllabus = set(Syllabus.objects.values_list('exam_id', flat=True))
-        exams_with_parts = Exam.objects.filter(syllabus_parts__isnull=False).distinct()
+        exams = Exam.objects.all()
         
-        for exam in exams_with_parts:
+        for exam in exams:
             # If a direct Syllabus object exists, it is already serialized in `data`
             if exam.id in exams_with_syllabus:
                 continue
@@ -1033,7 +1033,7 @@ class ExamSyllabusListView(generics.ListAPIView):
                 if similar_syllabus.pdf_file and hasattr(similar_syllabus.pdf_file, 'url'):
                     pdf_url = request.build_absolute_uri(similar_syllabus.pdf_file.url)
                     
-                # Calculate weights for this specific exam
+                # Calculate weights for this specific exam if it has syllabus parts
                 parts = exam.syllabus_parts.all()
                 total_qs = sum(p.num_questions for p in parts)
                 weights = []
@@ -1054,7 +1054,7 @@ class ExamSyllabusListView(generics.ListAPIView):
                 exams_with_syllabus.add(exam.id)
                 continue
                 
-            # If no existing syllabus, auto-generate details text and weights
+            # Try Option 2: Auto-generate from ExamSyllabus parts of this or similar exams
             similar_exams_ids = [exam.id]
             if words:
                 q_obj = Q()
@@ -1062,33 +1062,113 @@ class ExamSyllabusListView(generics.ListAPIView):
                     q_obj |= Q(name__icontains=word)
                 similar_exams_ids = list(Exam.objects.filter(q_obj).values_list('id', flat=True))
                 
-            parts = ExamSyllabus.objects.filter(exam__in=Exam.objects.filter(id__in=similar_exams_ids))
-            if not parts.exists():
+            parts = ExamSyllabus.objects.filter(exam_id__in=similar_exams_ids)
+            if parts.exists():
+                topics_desc = []
+                total_qs = 0
+                for part in parts:
+                    topics_desc.append(f"- {part.topic.name} ({part.num_questions} questions)")
+                    total_qs += part.num_questions
+                    
+                details = f"Official Mock Exam Syllabus for {exam.name}.\n\n"
+                details += f"Total Questions: {total_qs}\n"
+                details += f"Duration: {exam.duration_minutes} minutes\n\n"
+                details += "Subject Weightages & Topics:\n"
+                details += "\n".join(sorted(list(set(topics_desc))))
+                
+                # Specific weights for this exam
+                exam_parts = exam.syllabus_parts.all()
+                exam_total_qs = sum(p.num_questions for p in exam_parts)
+                weights = []
+                if exam_total_qs > 0:
+                    weights = [
+                        {"subject": p.topic.name, "weight": round((p.num_questions / exam_total_qs) * 100, 1)}
+                        for p in exam_parts
+                    ]
+                else:
+                    weights = [
+                        {"subject": part.topic.name, "weight": round((part.num_questions / total_qs) * 100, 1)}
+                        for part in parts
+                    ]
+                    
+                exams_with_syllabus.add(exam.id)
+                data.append({
+                    'id': -exam.id,
+                    'exam': exam.id,
+                    'exam_name': exam.name,
+                    'details': details,
+                    'pdf_file_url': None,
+                    'subject_weights': weights
+                })
                 continue
+
+            # Try Option 3: Auto-generate from the actual questions associated with this/similar exams
+            similar_exams_qs = Exam.objects.filter(id__in=similar_exams_ids)
+            exam_questions = Question.objects.filter(exams__in=similar_exams_qs)
+            if exam_questions.exists():
+                topic_counts = exam_questions.values('topic__name').annotate(count=Count('id')).order_by('-count')
+                total_qs = exam_questions.count()
                 
-            topics_desc = []
-            total_qs = 0
-            for part in parts:
-                topics_desc.append(f"- {part.topic.name} ({part.num_questions} questions)")
-                total_qs += part.num_questions
+                topics_desc = []
+                weights = []
+                for entry in topic_counts:
+                    topic_name = entry['topic__name'] or "General Topics"
+                    count = entry['count']
+                    topics_desc.append(f"- {topic_name} ({count} questions)")
+                    weights.append({
+                        "subject": topic_name,
+                        "weight": round((count / total_qs) * 100, 1)
+                    })
+                    
+                details = f"Curated Mock Exam Syllabus for {exam.name} (based on question distribution).\n\n"
+                details += f"Total Questions: 100\n"
+                details += f"Duration: {exam.duration_minutes} minutes\n\n"
+                details += "Subject Weightages & Topics:\n"
+                details += "\n".join(topics_desc)
                 
-            details = f"Official Mock Exam Syllabus for {exam.name}.\n\n"
-            details += f"Total Questions: {total_qs}\n"
-            details += f"Duration: {exam.duration_minutes} minutes\n\n"
-            details += "Subject Weightages & Topics:\n"
-            details += "\n".join(sorted(list(set(topics_desc))))
-            
-            # Specific weights calculation for this exam
-            exam_parts = exam.syllabus_parts.all()
-            exam_total_qs = sum(p.num_questions for p in exam_parts)
-            weights = []
-            if exam_total_qs > 0:
-                weights = [
-                    {"subject": p.topic.name, "weight": round((p.num_questions / exam_total_qs) * 100, 1)}
-                    for p in exam_parts
+                data.append({
+                    'id': -exam.id,
+                    'exam': exam.id,
+                    'exam_name': exam.name,
+                    'details': details,
+                    'pdf_file_url': None,
+                    'subject_weights': weights
+                })
+                exams_with_syllabus.add(exam.id)
+                continue
+
+            # Option 4: Generic default syllabus fallback based on name matching
+            default_weights = []
+            name_lower = exam.name.lower()
+            if 'ldc' in name_lower or 'clerk' in name_lower:
+                default_weights = [
+                    {"subject": "General Knowledge & Renaissance", "weight": 40.0},
+                    {"subject": "Simple Arithmetic & Mental Ability", "weight": 20.0},
+                    {"subject": "General English", "weight": 20.0},
+                    {"subject": "Malayalam/Regional Language", "weight": 10.0},
+                    {"subject": "General Science & IT", "weight": 10.0}
+                ]
+            elif 'lgs' in name_lower or 'servant' in name_lower:
+                default_weights = [
+                    {"subject": "General Knowledge & Renaissance", "weight": 50.0},
+                    {"subject": "General Science", "weight": 20.0},
+                    {"subject": "Simple Arithmetic & Mental Ability", "weight": 20.0},
+                    {"subject": "Current Affairs", "weight": 10.0}
+                ]
+            else:
+                default_weights = [
+                    {"subject": "General Studies & Current Affairs", "weight": 40.0},
+                    {"subject": "English Language & Grammar", "weight": 20.0},
+                    {"subject": "Regional Language", "weight": 20.0},
+                    {"subject": "Arithmetic & Mental Ability", "weight": 20.0}
                 ]
                 
-            exams_with_syllabus.add(exam.id)
+            topics_desc = [f"- {w['subject']} ({w['weight']}% weightage)" for w in default_weights]
+            details = f"Curated Mock Exam Syllabus for {exam.name}.\n\n"
+            details += f"Total Questions: 100\n"
+            details += f"Duration: {exam.duration_minutes} minutes\n\n"
+            details += "Subject Weightages & Topics:\n"
+            details += "\n".join(topics_desc)
             
             data.append({
                 'id': -exam.id,
@@ -1096,8 +1176,9 @@ class ExamSyllabusListView(generics.ListAPIView):
                 'exam_name': exam.name,
                 'details': details,
                 'pdf_file_url': None,
-                'subject_weights': weights
+                'subject_weights': default_weights
             })
+            exams_with_syllabus.add(exam.id)
             
         return Response(data)
 
