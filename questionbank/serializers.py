@@ -33,6 +33,7 @@ class TopicSerializer(serializers.ModelSerializer):
 class QuestionSerializer(serializers.ModelSerializer):
     # CORRECTED: This now includes all the new fields for a question
     exams = ExamSerializer(many=True, read_only=True)
+    topic = TopicSerializer(read_only=True)
     class Meta:
         model = Question
         fields = [
@@ -303,16 +304,32 @@ from .models import Syllabus, ExamAnnouncement
 class SyllabusSerializer(serializers.ModelSerializer):
     exam_name = serializers.CharField(source='exam.name', read_only=True)
     pdf_file_url = serializers.SerializerMethodField()
+    subject_weights = serializers.SerializerMethodField()
 
     class Meta:
         model = Syllabus # Use the new model name
-        fields = ['id', 'exam', 'exam_name', 'details', 'pdf_file_url']
+        fields = ['id', 'exam', 'exam_name', 'details', 'pdf_file_url', 'subject_weights']
 
     def get_pdf_file_url(self, obj):
         request = self.context.get('request')
         if obj.pdf_file and hasattr(obj.pdf_file, 'url'):
             return request.build_absolute_uri(obj.pdf_file.url)
         return None
+
+    def get_subject_weights(self, obj):
+        parts = obj.exam.syllabus_parts.all()
+        if not parts.exists():
+            return []
+        total_qs = sum(p.num_questions for p in parts)
+        if total_qs == 0:
+            return []
+        return [
+            {
+                "subject": p.topic.name,
+                "weight": round((p.num_questions / total_qs) * 100, 1)
+            }
+            for p in parts
+        ]
 
 
 class ExamAnnouncementSerializer(serializers.ModelSerializer):
@@ -385,7 +402,7 @@ class TopicListSerializer(serializers.ModelSerializer):
         return progress.last_practiced if progress else None
 
 
-class QuestionSerializer(serializers.ModelSerializer):
+class QuestionMockSerializer(serializers.ModelSerializer):
     topic = serializers.CharField(source='topic.name', read_only=True)
 
     class Meta:

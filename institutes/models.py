@@ -80,7 +80,7 @@ class FeeItem(models.Model):
             return 'paid'
         elif paid > 0:
             return 'partial'
-        if self.due_date < timezone.now().date():
+        if self.due_date < timezone.localdate():
             return 'overdue'
         return 'unpaid'
 

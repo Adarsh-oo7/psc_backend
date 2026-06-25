@@ -139,7 +139,7 @@ class QuestionEngine:
         if not user or not user.is_authenticated:
             return QuestionEngine.get_questions_for_user(user, filters={}, limit=limit)
 
-        today = timezone.now().date()
+        today = timezone.localdate()
 
         # Questions answered today
         answered_today_ids = UserAnswer.objects.filter(

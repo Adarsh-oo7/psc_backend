@@ -42,7 +42,7 @@ def update_streak(user):
     except UserProfile.DoesNotExist:
         profile = UserProfile.objects.create(user=user)
 
-    today = timezone.now().date()
+    today = timezone.localdate()
     yesterday = today - timedelta(days=1)
     
     current_streak = profile.current_streak

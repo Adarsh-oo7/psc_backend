@@ -22,7 +22,7 @@ from .models import (
     UserAnswer, ExamCategory, ExamSyllabus, UserFeedView
 )
 from .serializers import (
-    ExamSerializer, TopicSerializer, QuestionSerializer,
+    ExamSerializer, TopicSerializer, QuestionSerializer, QuestionMockSerializer,
     BookmarkSerializer, ReportSerializer, UserSerializer, 
     UserProfileSerializer, UserAnswerSerializer, ExamCategorySerializer,
     QuestionSubmissionSerializer, UserSubmissionSerializer
@@ -366,7 +366,7 @@ class GenerateMockExamView(views.APIView):
         shuffle(all_questions)
         response_data = {
             'exam_name': exam.name, 'duration_minutes': exam.duration_minutes,
-            'questions': QuestionSerializer(all_questions, many=True).data
+            'questions': QuestionMockSerializer(all_questions, many=True).data
         }
         return Response(response_data)
 
@@ -651,7 +651,7 @@ class MyProgressDashboardView(views.APIView):
         recent_answers = answers_to_process.order_by('-answered_at')[:50]
 
         # --- 5. Generate Heatmap data for last 30 days ---
-        today = timezone.now().date()
+        today = timezone.localdate()
         thirty_days_ago = today - datetime.timedelta(days=30)
         daily_activity_qs = UserAnswer.objects.filter(
             user=user, 
@@ -1013,8 +1013,48 @@ class ExamSyllabusListView(generics.ListAPIView):
         exams_with_parts = Exam.objects.filter(syllabus_parts__isnull=False).distinct()
         
         for exam in exams_with_parts:
-            # Check for similar exams to avoid duplicate listings
+            # If a direct Syllabus object exists, it is already serialized in `data`
+            if exam.id in exams_with_syllabus:
+                continue
+                
+            # Check for similar exams to inherit syllabus details if they exist
             words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
+            similar_syllabus = None
+            if words:
+                q_obj = Q()
+                for word in words:
+                    q_obj |= Q(name__icontains=word)
+                similar_exams = Exam.objects.filter(q_obj)
+                similar_syllabus = Syllabus.objects.filter(exam__in=similar_exams).first()
+                
+            # If we found a similar syllabus, inherit it
+            if similar_syllabus:
+                pdf_url = None
+                if similar_syllabus.pdf_file and hasattr(similar_syllabus.pdf_file, 'url'):
+                    pdf_url = request.build_absolute_uri(similar_syllabus.pdf_file.url)
+                    
+                # Calculate weights for this specific exam
+                parts = exam.syllabus_parts.all()
+                total_qs = sum(p.num_questions for p in parts)
+                weights = []
+                if total_qs > 0:
+                    weights = [
+                        {"subject": p.topic.name, "weight": round((p.num_questions / total_qs) * 100, 1)}
+                        for p in parts
+                    ]
+                    
+                data.append({
+                    'id': -exam.id,
+                    'exam': exam.id,
+                    'exam_name': exam.name,
+                    'details': similar_syllabus.details,
+                    'pdf_file_url': pdf_url,
+                    'subject_weights': weights
+                })
+                exams_with_syllabus.add(exam.id)
+                continue
+                
+            # If no existing syllabus, auto-generate details text and weights
             similar_exams_ids = [exam.id]
             if words:
                 q_obj = Q()
@@ -1022,11 +1062,6 @@ class ExamSyllabusListView(generics.ListAPIView):
                     q_obj |= Q(name__icontains=word)
                 similar_exams_ids = list(Exam.objects.filter(q_obj).values_list('id', flat=True))
                 
-            has_existing = any(eid in exams_with_syllabus for eid in similar_exams_ids)
-            if has_existing:
-                continue
-                
-            # If we don't have a syllabus for this exam, let's auto-generate/mock one!
             parts = ExamSyllabus.objects.filter(exam__in=Exam.objects.filter(id__in=similar_exams_ids))
             if not parts.exists():
                 continue
@@ -1043,6 +1078,16 @@ class ExamSyllabusListView(generics.ListAPIView):
             details += "Subject Weightages & Topics:\n"
             details += "\n".join(sorted(list(set(topics_desc))))
             
+            # Specific weights calculation for this exam
+            exam_parts = exam.syllabus_parts.all()
+            exam_total_qs = sum(p.num_questions for p in exam_parts)
+            weights = []
+            if exam_total_qs > 0:
+                weights = [
+                    {"subject": p.topic.name, "weight": round((p.num_questions / exam_total_qs) * 100, 1)}
+                    for p in exam_parts
+                ]
+                
             exams_with_syllabus.add(exam.id)
             
             data.append({
@@ -1050,7 +1095,8 @@ class ExamSyllabusListView(generics.ListAPIView):
                 'exam': exam.id,
                 'exam_name': exam.name,
                 'details': details,
-                'pdf_file_url': None
+                'pdf_file_url': None,
+                'subject_weights': weights
             })
             
         return Response(data)
@@ -1206,7 +1252,7 @@ class StudyFeedView(views.APIView):
         limit = get_user_entitlement(request.user, 'feed_limit', 15)
         
         # 2. Count views today
-        today = timezone.now().date()
+        today = timezone.localdate()
         today_views = UserFeedView.objects.filter(user=request.user, viewed_date=today).count()
         
         if today_views >= limit:
@@ -1280,7 +1326,7 @@ class RecordCardView(views.APIView):
         except StudyFeedCard.DoesNotExist:
             return Response({'error': 'Card does not exist'}, status=status.HTTP_404_NOT_FOUND)
             
-        today = timezone.now().date()
+        today = timezone.localdate()
         limit = get_user_entitlement(request.user, 'feed_limit', 15)
         today_views = UserFeedView.objects.filter(user=request.user, viewed_date=today).count()
         

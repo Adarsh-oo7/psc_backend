@@ -352,7 +352,7 @@ class AttendanceListCreateView(APIView):
 
     def get(self, request, pk):
         batch = get_object_or_404(Batch, pk=pk, institute=request.user.owned_institute)
-        date_str = request.query_params.get('date', timezone.now().date().isoformat())
+        date_str = request.query_params.get('date', timezone.localdate().isoformat())
         
         # Get all memberships
         memberships = batch.memberships.select_related('student_profile__user')

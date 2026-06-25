@@ -458,7 +458,7 @@ class QuestionEngineTestCase(APITestCase):
         self.assertEqual(response.status_code, 200)
         self.assertTrue(len(response.data) > 0)
         for q in response.data:
-            self.assertEqual(q['topic'], self.topic1.name)
+            self.assertEqual(q['topic']['name'], self.topic1.name)
 
         # 4. Practice session weak areas starting
         payload = {
@@ -470,7 +470,7 @@ class QuestionEngineTestCase(APITestCase):
         self.assertIn('session_id', response.data)
         self.assertTrue(len(response.data['questions']) > 0)
         for q in response.data['questions']:
-            self.assertEqual(q['topic'], self.topic1.name)
+            self.assertEqual(q['topic']['name'], self.topic1.name)
 
     def test_exam_fallback(self):
         from questionbank.engine import QuestionEngine
