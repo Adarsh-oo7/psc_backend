@@ -351,6 +351,16 @@ class SyllabusSerializer(serializers.ModelSerializer):
                 {"subject": "Part IV: Public Health", "weight": 10.0},
                 {"subject": "Part V: Simple Arithmetic & Mental Ability", "weight": 20.0}
             ]
+        elif 'sub inspector' in name_lower or 'si ' in name_lower or 'si(' in name_lower or 'inspector' in name_lower:
+            return [
+                {"subject": "General Knowledge & Current Affairs", "weight": 50.0},
+                {"subject": "General Science", "weight": 10.0},
+                {"subject": "Mental Ability & Logical Reasoning", "weight": 10.0},
+                {"subject": "Quantitative Aptitude", "weight": 10.0},
+                {"subject": "General English", "weight": 10.0},
+                {"subject": "Regional Language (Malayalam/Kannada/Tamil)", "weight": 5.0},
+                {"subject": "Police & Legal Subjects", "weight": 5.0}
+            ]
         elif 'constable' in name_lower or 'cpo' in name_lower or 'police' in name_lower:
             return [
                 {"subject": "Part I: General Knowledge", "weight": 40.0},

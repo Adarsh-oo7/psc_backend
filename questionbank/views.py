@@ -1271,6 +1271,32 @@ class ExamSyllabusListView(generics.ListAPIView):
                     {"subject": "Part IV: Public Health", "weight": 10.0},
                     {"subject": "Part V: Simple Arithmetic & Mental Ability", "weight": 20.0}
                 ]
+            elif 'sub inspector' in name_lower or 'si ' in name_lower or 'si(' in name_lower or 'inspector' in name_lower:
+                details = (
+                    "### Part I: General Knowledge & Current Affairs (50 Marks)\n"
+                    "History, Geography, Economics, Civics, Constitution, and Kerala Renaissance along with Current Events.\n\n"
+                    "### Part II: General Science (10 Marks)\n"
+                    "Biology, Physics, Chemistry and scientific developments.\n\n"
+                    "### Part III: Mental Ability & Logical Reasoning (10 Marks)\n"
+                    "Analogy, classification, series, logical reasoning puzzles.\n\n"
+                    "### Part IV: Quantitative Aptitude (10 Marks)\n"
+                    "Mathematical equations, averages, interest, ratio, time and work.\n\n"
+                    "### Part V: General English (10 Marks)\n"
+                    "English grammar, sentence correction, and vocabulary.\n\n"
+                    "### Part VI: Regional Language (Malayalam/Kannada/Tamil) (5 Marks)\n"
+                    "Spelling, translation, grammar, and idioms.\n\n"
+                    "### Part VII: Police & Legal Subjects (5 Marks)\n"
+                    "Basic legal awareness, IPC, CrPC, Evidence Act, and Kerala Police Act."
+                )
+                default_weights = [
+                    {"subject": "General Knowledge & Current Affairs", "weight": 50.0},
+                    {"subject": "General Science", "weight": 10.0},
+                    {"subject": "Mental Ability & Logical Reasoning", "weight": 10.0},
+                    {"subject": "Quantitative Aptitude", "weight": 10.0},
+                    {"subject": "General English", "weight": 10.0},
+                    {"subject": "Regional Language (Malayalam/Kannada/Tamil)", "weight": 5.0},
+                    {"subject": "Police & Legal Subjects", "weight": 5.0}
+                ]
             elif 'constable' in name_lower or 'cpo' in name_lower or 'police' in name_lower:
                 details = (
                     "### Part I: General Knowledge (40 Marks)\n"
