@@ -1295,6 +1295,29 @@ class ExamSyllabusListView(generics.ListAPIView):
                     {"subject": "Part V: Regional Language", "weight": 10.0},
                     {"subject": "Part VI: Special Topics (Job-Related)", "weight": 20.0}
                 ]
+            elif 'forest' in name_lower or 'beat forest' in name_lower:
+                details = (
+                    "### Part I: General Knowledge (40 Marks)\n"
+                    "History, Geography, Economics, Indian Constitution, Kerala Governance, etc.\n\n"
+                    "### Part II: Current Affairs (10 Marks)\n"
+                    "Recent national and international events.\n\n"
+                    "### Part III: Simple Arithmetic, Mental Ability & Reasoning (10 Marks)\n"
+                    "Numerical ability and logical reasoning.\n\n"
+                    "### Part IV: General English (10 Marks)\n"
+                    "Grammar and Vocabulary.\n\n"
+                    "### Part V: Regional Language (Malayalam/Kannada/Tamil) (10 Marks)\n"
+                    "Regional language proficiency.\n\n"
+                    "### Part VI: Special Topics (Forest & Wildlife) (20 Marks)\n"
+                    "Topics related to Forest and Wildlife."
+                )
+                default_weights = [
+                    {"subject": "General Knowledge", "weight": 40.0},
+                    {"subject": "Current Affairs", "weight": 10.0},
+                    {"subject": "Simple Arithmetic, Mental Ability & Reasoning", "weight": 10.0},
+                    {"subject": "General English", "weight": 10.0},
+                    {"subject": "Regional Language (Malayalam/Kannada/Tamil)", "weight": 10.0},
+                    {"subject": "Special Topics (Forest & Wildlife)", "weight": 20.0}
+                ]
             elif 'degree' in name_lower or 'graduate' in name_lower:
                 details = (
                     "### Part I: General Knowledge (65 Marks)\n"

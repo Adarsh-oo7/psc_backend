@@ -25,32 +25,54 @@ def award_xp(user, amount):
     level_up = new_level > old_level
     return amount, level_up, new_level
 
+def refresh_streak(profile):
+    """
+    Checks if the user has missed days and updates/decays their streak accordingly,
+    consuming a streak freeze if available, or resetting the streak to 0.
+    Returns True if a freeze was used, False otherwise.
+    """
+    if profile.last_active_date is None:
+        return False
+        
+    today = timezone.localdate()
+    yesterday = today - timedelta(days=1)
+    
+    if profile.last_active_date >= yesterday:
+        # Streak is safe (either active today or yesterday)
+        return False
+        
+    if profile.streak_freeze_count > 0:
+        # Consume a freeze to protect the streak, virtually marking today active
+        profile.streak_freeze_count -= 1
+        profile.last_active_date = today
+        profile.save(update_fields=['streak_freeze_count', 'last_active_date'])
+        return True
+    else:
+        # No freezes, streak is lost
+        profile.current_streak = 0
+        profile.save(update_fields=['current_streak'])
+        return False
+
 def update_streak(user):
     """
     Updates a user's streak based on their daily activity.
-    Logic:
-    - If never active, sets streak to 1.
-    - If active today, does nothing.
-    - If active yesterday (last_active_date == today - 1), increments streak.
-    - If active before yesterday:
-        - If they have streak freezes left, decrement freeze and preserve streak.
-        - Otherwise, reset streak to 1.
-    Returns (current_streak, longest_streak, freeze_used)
     """
     try:
         profile = user.userprofile
     except UserProfile.DoesNotExist:
         profile = UserProfile.objects.create(user=user)
 
+    # First refresh the streak status in case they missed yesterday/earlier
+    freeze_used = refresh_streak(profile)
+
     today = timezone.localdate()
     yesterday = today - timedelta(days=1)
     
     current_streak = profile.current_streak
     longest_streak = profile.longest_streak
-    freeze_used = False
     
-    if profile.last_active_date is None:
-        # First activity ever
+    if profile.last_active_date is None or profile.current_streak == 0:
+        # First activity ever or starting a new streak
         current_streak = 1
         longest_streak = max(longest_streak, 1)
         profile.last_active_date = today
@@ -65,20 +87,13 @@ def update_streak(user):
         # Award streak bonus XP!
         award_xp(user, 20)
     else:
-        # Missed day(s)
-        if profile.streak_freeze_count > 0:
-            profile.streak_freeze_count -= 1
-            freeze_used = True
-            # Keep the streak as is, but mark active today so they don't lose it tomorrow
-            profile.last_active_date = today
-        else:
-            # Reset streak to 1
-            current_streak = 1
-            profile.last_active_date = today
+        # Fallback if refresh_streak missed it for any reason
+        current_streak = 1
+        profile.last_active_date = today
 
     profile.current_streak = current_streak
     profile.longest_streak = longest_streak
-    profile.save(update_fields=['current_streak', 'longest_streak', 'last_active_date', 'streak_freeze_count'])
+    profile.save(update_fields=['current_streak', 'longest_streak', 'last_active_date'])
     
     streak_promo_awarded = False
     if current_streak >= 5 and not profile.is_premium:

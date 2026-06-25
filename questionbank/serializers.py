@@ -152,6 +152,11 @@ class UserProfileSerializer(serializers.ModelSerializer):
     def get_district_display(self, obj):
         return obj.get_district_display() if obj.district else ''
 
+    def to_representation(self, instance):
+        from questionbank.gamification import refresh_streak
+        refresh_streak(instance)
+        return super().to_representation(instance)
+
     def validate_preferred_exams_ids(self, value):
         if len(value) > 3:
             raise serializers.ValidationError("You can select a maximum of 3 preferred exams.")
