@@ -129,3 +129,30 @@ sudo apt install certbot python3-certbot-nginx -y
 sudo certbot --nginx -d api.yourdomain.com
 ```
 Follow the prompts, and certbot will automatically configure the SSL certs and rewrite Nginx to route all traffic securely over HTTPS.
+
+---
+
+## Part 3: Automated Daily Current Affairs Updates (Cron Job)
+
+To keep current affairs and MCQs updated automatically every day, configure a cron job on your Hostinger VPS.
+
+### Step 1: Make the runner script executable
+Log in to your VPS via SSH and run:
+```bash
+chmod +x /var/www/kpsc-backend/run_daily_current_affairs.sh
+```
+
+### Step 2: Open Crontab
+Open the system crontab editor for the `root` user (or the user running the django backend):
+```bash
+crontab -e
+```
+
+### Step 3: Add Cron Entry
+Add the following line at the bottom of the crontab file to trigger the update script every morning at 6:00 AM (server local time):
+```cron
+0 6 * * * /bin/bash /var/www/kpsc-backend/run_daily_current_affairs.sh >> /var/www/kpsc-backend/cron_current_affairs.log 2>&1
+```
+
+This will automatically execute the daily current affairs generator, pull fresh news/MCQs via the LLM router (Groq -> Gemini -> GLM), and log execution results to `/var/www/kpsc-backend/cron_current_affairs.log`.
+
