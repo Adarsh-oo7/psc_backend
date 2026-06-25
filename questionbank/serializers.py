@@ -334,6 +334,50 @@ class SyllabusSerializer(serializers.ModelSerializer):
         return None
 
     def get_subject_weights(self, obj):
+        name_lower = obj.exam.name.lower()
+        if 'ldc' in name_lower or 'clerk' in name_lower:
+            return [
+                {"subject": "Part I: General Knowledge", "weight": 50.0},
+                {"subject": "Part II: Current Affairs", "weight": 20.0},
+                {"subject": "Part III: Simple Arithmetic & Mental Ability", "weight": 10.0},
+                {"subject": "Part IV: General English", "weight": 10.0},
+                {"subject": "Part V: Regional Language", "weight": 10.0}
+            ]
+        elif 'lgs' in name_lower or 'servant' in name_lower:
+            return [
+                {"subject": "Part I: General Knowledge", "weight": 40.0},
+                {"subject": "Part II: Current Affairs", "weight": 20.0},
+                {"subject": "Part III: Science", "weight": 10.0},
+                {"subject": "Part IV: Public Health", "weight": 10.0},
+                {"subject": "Part V: Simple Arithmetic & Mental Ability", "weight": 20.0}
+            ]
+        elif 'constable' in name_lower or 'cpo' in name_lower or 'police' in name_lower:
+            return [
+                {"subject": "Part I: General Knowledge", "weight": 40.0},
+                {"subject": "Part II: Current Affairs", "weight": 10.0},
+                {"subject": "Part III: Simple Arithmetic & Mental Ability", "weight": 10.0},
+                {"subject": "Part IV: General English", "weight": 10.0},
+                {"subject": "Part V: Regional Language", "weight": 10.0},
+                {"subject": "Part VI: Special Topics (Job-Related)", "weight": 20.0}
+            ]
+        elif 'forest' in name_lower or 'beat forest' in name_lower:
+            return [
+                {"subject": "General Knowledge", "weight": 40.0},
+                {"subject": "Current Affairs", "weight": 10.0},
+                {"subject": "Simple Arithmetic, Mental Ability & Reasoning", "weight": 10.0},
+                {"subject": "General English", "weight": 10.0},
+                {"subject": "Regional Language (Malayalam/Kannada/Tamil)", "weight": 10.0},
+                {"subject": "Special Topics (Forest & Wildlife)", "weight": 20.0}
+            ]
+        elif 'degree' in name_lower or 'graduate' in name_lower:
+            return [
+                {"subject": "Part I: General Knowledge", "weight": 50.0},
+                {"subject": "Part II: Simple Arithmetic & Mental Ability", "weight": 20.0},
+                {"subject": "Part III: General English", "weight": 20.0},
+                {"subject": "Part IV: Regional Language", "weight": 10.0}
+            ]
+
+        # Consolidated DB-driven fallback for custom exams
         parts = obj.exam.syllabus_parts.all()
         if not parts.exists():
             return []
