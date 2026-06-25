@@ -297,6 +297,18 @@ class PreviousYearPaperSerializer(serializers.ModelSerializer):
         return None
 
 
+def get_consolidated_subject(topic_name):
+    name = topic_name.lower()
+    if any(x in name for x in ['malayalam', 'regional language', 'tamil', 'kannada']):
+        return "Regional Language (Malayalam/Kannada/Tamil)"
+    if any(x in name for x in ['english', 'grammar', 'tense', 'voice', 'speech', 'synonym', 'antonym', 'vocabulary', 'spelling', 'comprehension']):
+        return "General English"
+    if any(x in name for x in ['arithmetic', 'math', 'mental', 'reasoning', 'hcf', 'lcm', 'bodmas', 'fraction', 'ratio', 'proportion', 'interest', 'average', 'algebra', 'geometry', 'mensuration', 'data interpretation', 'simplification', 'profit', 'loss', 'time & work', 'speed', 'distance', 'mixture', 'logical']):
+        return "Simple Arithmetic & Mental Ability"
+    if any(x in name for x in ['current affairs', 'news', 'events', 'awards', 'sports', 'games', 'observances', 'in news']):
+        return "Current Affairs"
+    return "General Knowledge & Renaissance"
+
 # In questionbank/serializers.py
 # In questionbank/serializers.py
 from .models import Syllabus, ExamAnnouncement
@@ -323,13 +335,34 @@ class SyllabusSerializer(serializers.ModelSerializer):
         total_qs = sum(p.num_questions for p in parts)
         if total_qs == 0:
             return []
-        return [
-            {
-                "subject": p.topic.name,
-                "weight": round((p.num_questions / total_qs) * 100, 1)
-            }
-            for p in parts
+            
+        consolidated = {}
+        for p in parts:
+            subject = get_consolidated_subject(p.topic.name)
+            consolidated[subject] = consolidated.get(subject, 0) + p.num_questions
+            
+        order = [
+            "General Knowledge & Renaissance",
+            "Current Affairs",
+            "Simple Arithmetic & Mental Ability",
+            "General English",
+            "Regional Language (Malayalam/Kannada/Tamil)"
         ]
+        
+        result = []
+        for subject in order:
+            if subject in consolidated:
+                result.append({
+                    "subject": subject,
+                    "weight": round((consolidated[subject] / total_qs) * 100, 1)
+                })
+        for subject, count in consolidated.items():
+            if not any(r['subject'] == subject for r in result):
+                result.append({
+                    "subject": subject,
+                    "weight": round((count / total_qs) * 100, 1)
+                })
+        return result
 
 
 class ExamAnnouncementSerializer(serializers.ModelSerializer):

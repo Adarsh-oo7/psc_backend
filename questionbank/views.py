@@ -992,6 +992,17 @@ from .models import Syllabus, ExamAnnouncement
 from .serializers import SyllabusSerializer, ExamAnnouncementSerializer
 from django.utils import timezone   
 
+def get_consolidated_subject(topic_name):
+    name = topic_name.lower()
+    if any(x in name for x in ['malayalam', 'regional language', 'tamil', 'kannada']):
+        return "Regional Language (Malayalam/Kannada/Tamil)"
+    if any(x in name for x in ['english', 'grammar', 'tense', 'voice', 'speech', 'synonym', 'antonym', 'vocabulary', 'spelling', 'comprehension']):
+        return "General English"
+    if any(x in name for x in ['arithmetic', 'math', 'mental', 'reasoning', 'hcf', 'lcm', 'bodmas', 'fraction', 'ratio', 'proportion', 'interest', 'average', 'algebra', 'geometry', 'mensuration', 'data interpretation', 'simplification', 'profit', 'loss', 'time & work', 'speed', 'distance', 'mixture', 'logical']):
+        return "Simple Arithmetic & Mental Ability"
+    if any(x in name for x in ['current affairs', 'news', 'events', 'awards', 'sports', 'games', 'observances', 'in news']):
+        return "Current Affairs"
+    return "General Knowledge & Renaissance"
 
 class ExamSyllabusListView(generics.ListAPIView):
     serializer_class = SyllabusSerializer
@@ -1007,7 +1018,7 @@ class ExamSyllabusListView(generics.ListAPIView):
         
         # Auto-generate Syllabus text if no direct Syllabus object exists
         from .models import Exam, ExamSyllabus
-        from django.db.models import Q
+        from django.db.models import Q, Count
         
         exams_with_syllabus = set(Syllabus.objects.values_list('exam_id', flat=True))
         exams = Exam.objects.all()
@@ -1038,9 +1049,13 @@ class ExamSyllabusListView(generics.ListAPIView):
                 total_qs = sum(p.num_questions for p in parts)
                 weights = []
                 if total_qs > 0:
+                    consolidated = {}
+                    for p in parts:
+                        subject = get_consolidated_subject(p.topic.name)
+                        consolidated[subject] = consolidated.get(subject, 0) + p.num_questions
                     weights = [
-                        {"subject": p.topic.name, "weight": round((p.num_questions / total_qs) * 100, 1)}
-                        for p in parts
+                        {"subject": sub, "weight": round((count / total_qs) * 100, 1)}
+                        for sub, count in consolidated.items()
                     ]
                     
                 data.append({
@@ -1070,25 +1085,64 @@ class ExamSyllabusListView(generics.ListAPIView):
                     topics_desc.append(f"- {part.topic.name} ({part.num_questions} questions)")
                     total_qs += part.num_questions
                     
-                details = f"Official Mock Exam Syllabus for {exam.name}.\n\n"
-                details += f"Total Questions: {total_qs}\n"
-                details += f"Duration: {exam.duration_minutes} minutes\n\n"
-                details += "Subject Weightages & Topics:\n"
-                details += "\n".join(sorted(list(set(topics_desc))))
+                # Specific details based on exam type
+                details = ""
+                name_lower = exam.name.lower()
+                if 'ldc' in name_lower or 'clerk' in name_lower:
+                    details = (
+                        "### Part I: General Knowledge (50 Marks)\n"
+                        "History (5 Marks), Geography (5 Marks), Economics (5 Marks), Constitution (5 Marks), "
+                        "Kerala Governance (5 Marks), Life Science & Health (6 Marks), Physical Science (3 Marks), "
+                        "Chemistry (3 Marks), Arts/Sports/Literature/Culture (5 Marks), Computer Basics (3 Marks), "
+                        "Important Laws (RTI, Consumer, POCSO, Domestic Violence - 5 Marks).\n\n"
+                        "### Part II: Current Affairs (20 Marks)\n"
+                        "Recent national and international events in science, technology, arts, culture, politics, economy, literature, and sports.\n\n"
+                        "### Part III: Simple Arithmetic, Mental Ability & Observation Skills (10 Marks)\n"
+                        "Simple Arithmetic (5 Marks), Mental Ability and Observation Skills (5 Marks).\n\n"
+                        "### Part IV: General English (10 Marks)\n"
+                        "Grammar (5 Marks) and Vocabulary (5 Marks).\n\n"
+                        "### Part V: Regional Language – Malayalam/Kannada/Tamil (10 Marks)\n"
+                        "Regional language spelling, grammar, proverbs, and translations."
+                    )
+                elif 'lgs' in name_lower or 'servant' in name_lower:
+                    details = (
+                        "### Part I: General Knowledge (50 Marks)\n"
+                        "History, Geography, Economics, Civics, Kerala Renaissance, and General GK.\n\n"
+                        "### Part II: General Science (20 Marks)\n"
+                        "Natural Science (Life Science) (10 Marks) and Physical Science (Physics & Chemistry) (10 Marks).\n\n"
+                        "### Part III: Simple Arithmetic & Mental Ability (20 Marks)\n"
+                        "Simple Arithmetic (10 Marks) and Mental Ability (10 Marks).\n\n"
+                        "### Part IV: Current Affairs (10 Marks)\n"
+                        "Latest national and international events."
+                    )
+                else:
+                    details = f"Official Mock Exam Syllabus for {exam.name}.\n\n"
+                    details += f"Total Questions: {total_qs}\n"
+                    details += f"Duration: {exam.duration_minutes} minutes\n\n"
+                    details += "Subject Weightages & Topics:\n"
+                    details += "\n".join(sorted(list(set(topics_desc))))
                 
                 # Specific weights for this exam
                 exam_parts = exam.syllabus_parts.all()
                 exam_total_qs = sum(p.num_questions for p in exam_parts)
                 weights = []
                 if exam_total_qs > 0:
+                    consolidated = {}
+                    for p in exam_parts:
+                        subject = get_consolidated_subject(p.topic.name)
+                        consolidated[subject] = consolidated.get(subject, 0) + p.num_questions
                     weights = [
-                        {"subject": p.topic.name, "weight": round((p.num_questions / exam_total_qs) * 100, 1)}
-                        for p in exam_parts
+                        {"subject": sub, "weight": round((count / exam_total_qs) * 100, 1)}
+                        for sub, count in consolidated.items()
                     ]
                 else:
+                    consolidated = {}
+                    for part in parts:
+                        subject = get_consolidated_subject(part.topic.name)
+                        consolidated[subject] = consolidated.get(subject, 0) + part.num_questions
                     weights = [
-                        {"subject": part.topic.name, "weight": round((part.num_questions / total_qs) * 100, 1)}
-                        for part in parts
+                        {"subject": sub, "weight": round((count / total_qs) * 100, 1)}
+                        for sub, count in consolidated.items()
                     ]
                     
                 exams_with_syllabus.add(exam.id)
@@ -1109,22 +1163,51 @@ class ExamSyllabusListView(generics.ListAPIView):
                 topic_counts = exam_questions.values('topic__name').annotate(count=Count('id')).order_by('-count')
                 total_qs = exam_questions.count()
                 
-                topics_desc = []
-                weights = []
+                consolidated = {}
                 for entry in topic_counts:
                     topic_name = entry['topic__name'] or "General Topics"
                     count = entry['count']
-                    topics_desc.append(f"- {topic_name} ({count} questions)")
-                    weights.append({
-                        "subject": topic_name,
-                        "weight": round((count / total_qs) * 100, 1)
-                    })
+                    subject = get_consolidated_subject(topic_name)
+                    consolidated[subject] = consolidated.get(subject, 0) + count
                     
-                details = f"Curated Mock Exam Syllabus for {exam.name} (based on question distribution).\n\n"
-                details += f"Total Questions: 100\n"
-                details += f"Duration: {exam.duration_minutes} minutes\n\n"
-                details += "Subject Weightages & Topics:\n"
-                details += "\n".join(topics_desc)
+                weights = [
+                    {"subject": sub, "weight": round((count / total_qs) * 100, 1)}
+                    for sub, count in consolidated.items()
+                ]
+                
+                details = ""
+                name_lower = exam.name.lower()
+                if 'ldc' in name_lower or 'clerk' in name_lower:
+                    details = (
+                        "### Part I: General Knowledge (50 Marks)\n"
+                        "History (5 Marks), Geography (5 Marks), Economics (5 Marks), Constitution (5 Marks), "
+                        "Kerala Governance (5 Marks), Life Science & Health (6 Marks), Physical Science (3 Marks), "
+                        "Chemistry (3 Marks), Arts/Sports/Literature/Culture (5 Marks), Computer Basics (3 Marks), "
+                        "Important Laws (RTI, Consumer, POCSO, Domestic Violence - 5 Marks).\n\n"
+                        "### Part II: Current Affairs (20 Marks)\n"
+                        "Recent national and international events in science, technology, arts, culture, politics, economy, literature, and sports.\n\n"
+                        "### Part III: Simple Arithmetic, Mental Ability & Observation Skills (10 Marks)\n"
+                        "Simple Arithmetic (5 Marks), Mental Ability and Observation Skills (5 Marks).\n\n"
+                        "### Part IV: General English (10 Marks)\n"
+                        "Grammar (5 Marks) and Vocabulary (5 Marks).\n\n"
+                        "### Part V: Regional Language – Malayalam/Kannada/Tamil (10 Marks)\n"
+                        "Regional language spelling, grammar, proverbs, and translations."
+                    )
+                elif 'lgs' in name_lower or 'servant' in name_lower:
+                    details = (
+                        "### Part I: General Knowledge (50 Marks)\n"
+                        "History, Geography, Economics, Civics, Kerala Renaissance, and General GK.\n\n"
+                        "### Part II: General Science (20 Marks)\n"
+                        "Natural Science (Life Science) (10 Marks) and Physical Science (Physics & Chemistry) (10 Marks).\n\n"
+                        "### Part III: Simple Arithmetic & Mental Ability (20 Marks)\n"
+                        "Simple Arithmetic (10 Marks) and Mental Ability (10 Marks).\n\n"
+                        "### Part IV: Current Affairs (10 Marks)\n"
+                        "Latest national and international events."
+                    )
+                else:
+                    details = f"Curated Mock Exam Syllabus for {exam.name} (based on question distribution).\n\n"
+                    details += f"Total Questions: 100\n"
+                    details += f"Duration: {exam.duration_minutes} minutes\n\n"
                 
                 data.append({
                     'id': -exam.id,
@@ -1139,36 +1222,114 @@ class ExamSyllabusListView(generics.ListAPIView):
 
             # Option 4: Generic default syllabus fallback based on name matching
             default_weights = []
+            details = ""
             name_lower = exam.name.lower()
             if 'ldc' in name_lower or 'clerk' in name_lower:
-                default_weights = [
-                    {"subject": "General Knowledge & Renaissance", "weight": 40.0},
-                    {"subject": "Simple Arithmetic & Mental Ability", "weight": 20.0},
-                    {"subject": "General English", "weight": 20.0},
-                    {"subject": "Malayalam/Regional Language", "weight": 10.0},
-                    {"subject": "General Science & IT", "weight": 10.0}
-                ]
-            elif 'lgs' in name_lower or 'servant' in name_lower:
+                details = (
+                    "### Part I: General Knowledge (50 Marks)\n"
+                    "History (5 Marks), Geography (5 Marks), Economics (5 Marks), Constitution (5 Marks), "
+                    "Kerala Governance (5 Marks), Life Science & Health (6 Marks), Physical Science (3 Marks), "
+                    "Chemistry (3 Marks), Arts/Sports/Literature/Culture (5 Marks), Computer Basics (3 Marks), "
+                    "Important Laws (RTI, Consumer, POCSO, Domestic Violence - 5 Marks).\n\n"
+                    "### Part II: Current Affairs (20 Marks)\n"
+                    "Recent national and international events in science, technology, arts, culture, politics, economy, literature, and sports.\n\n"
+                    "### Part III: Simple Arithmetic, Mental Ability & Observation Skills (10 Marks)\n"
+                    "Simple Arithmetic (5 Marks), Mental Ability and Observation Skills (5 Marks).\n\n"
+                    "### Part IV: General English (10 Marks)\n"
+                    "Grammar (5 Marks) and Vocabulary (5 Marks).\n\n"
+                    "### Part V: Regional Language – Malayalam/Kannada/Tamil (10 Marks)\n"
+                    "Regional language spelling, grammar, proverbs, and translations."
+                )
                 default_weights = [
                     {"subject": "General Knowledge & Renaissance", "weight": 50.0},
-                    {"subject": "General Science", "weight": 20.0},
-                    {"subject": "Simple Arithmetic & Mental Ability", "weight": 20.0},
-                    {"subject": "Current Affairs", "weight": 10.0}
+                    {"subject": "Current Affairs", "weight": 20.0},
+                    {"subject": "Simple Arithmetic & Mental Ability", "weight": 10.0},
+                    {"subject": "General English", "weight": 10.0},
+                    {"subject": "Regional Language (Malayalam/Kannada/Tamil)", "weight": 10.0}
+                ]
+            elif 'lgs' in name_lower or 'servant' in name_lower:
+                details = (
+                    "### Part I: General Knowledge (40 Marks)\n"
+                    "Indian Freedom Struggle, Post-Independence India, Fundamental Rights & Duties, "
+                    "Geographical features of India, Kerala Geography & Renaissance, Arts/Sports/Culture.\n\n"
+                    "### Part II: Current Affairs (20 Marks)\n"
+                    "Recent national and international events in science, technology, arts, culture, "
+                    "politics, economy, literature, and sports.\n\n"
+                    "### Part III: Science (10 Marks)\n"
+                    "Life Science/Biology (5 Marks): Human body, vitamins, crops, forestry, environment.\n"
+                    "Physical Science/Chemistry (5 Marks): Atoms, minerals, elements, matter, energy, solar system.\n\n"
+                    "### Part IV: Public Health (10 Marks)\n"
+                    "Communicable diseases, basic health knowledge, lifestyle diseases, health welfare in Kerala.\n\n"
+                    "### Part V: Simple Arithmetic, Mental Ability & Observation Skills (20 Marks)\n"
+                    "Simple Arithmetic (10 Marks): Numbers, LCM/HCF, fractions, averages, profit/loss, time/distance.\n"
+                    "Mental Ability (10 Marks): Series, analogies, classification, odd one out, age problems."
+                )
+                default_weights = [
+                    {"subject": "Part I: General Knowledge", "weight": 40.0},
+                    {"subject": "Part II: Current Affairs", "weight": 20.0},
+                    {"subject": "Part III: Science", "weight": 10.0},
+                    {"subject": "Part IV: Public Health", "weight": 10.0},
+                    {"subject": "Part V: Simple Arithmetic & Mental Ability", "weight": 20.0}
+                ]
+            elif 'constable' in name_lower or 'cpo' in name_lower or 'police' in name_lower:
+                details = (
+                    "### Part I: General Knowledge (40 Marks)\n"
+                    "History (5), Geography (5), Economics (5), Indian Constitution (8), Kerala Governance (3), "
+                    "Life Science & Public Health (4), Physical Science (3), Chemistry (3), Arts/Sports/Literature/Culture (4).\n\n"
+                    "### Part II: Current Affairs (10 Marks)\n"
+                    "Recent national and international events.\n\n"
+                    "### Part III: Simple Arithmetic, Mental Ability & Observation Skills (10 Marks)\n"
+                    "Simple Arithmetic (5 Marks) and Mental Ability/Observation Skills (5 Marks).\n\n"
+                    "### Part IV: General English (10 Marks)\n"
+                    "Grammar (5 Marks) and Vocabulary (5 Marks).\n\n"
+                    "### Part V: Regional Language – Malayalam/Kannada/Tamil (10 Marks)\n"
+                    "Word purity, sentence correction, translation, synonyms, antonyms, idioms.\n\n"
+                    "### Part VI: Special Topics – Job-Related Subjects (20 Marks)\n"
+                    "IPC/BNS Offences, CrPC/BNSS, Evidence Act, Kerala Police Act, NDPS, POCSO, IT Act, RTI."
+                )
+                default_weights = [
+                    {"subject": "Part I: General Knowledge", "weight": 40.0},
+                    {"subject": "Part II: Current Affairs", "weight": 10.0},
+                    {"subject": "Part III: Simple Arithmetic & Mental Ability", "weight": 10.0},
+                    {"subject": "Part IV: General English", "weight": 10.0},
+                    {"subject": "Part V: Regional Language", "weight": 10.0},
+                    {"subject": "Part VI: Special Topics (Job-Related)", "weight": 20.0}
+                ]
+            elif 'degree' in name_lower or 'graduate' in name_lower:
+                details = (
+                    "### Part I: General Knowledge (65 Marks)\n"
+                    "History (10), Geography (5), Economics (5), Civics (5), Indian Constitution (5), "
+                    "Arts/Sports/Literature/Culture (10), Computer Science (5), Science & Technology (5), Current Affairs.\n\n"
+                    "### Part II: Simple Arithmetic, Mental Ability and Reasoning (20 Marks)\n"
+                    "Simple Arithmetic (10 Marks) and Mental Ability (10 Marks).\n\n"
+                    "### Part III: General English (20 Marks)\n"
+                    "Grammar (10 Marks) and Vocabulary (10 Marks).\n\n"
+                    "### Part IV: Regional Language – Malayalam/Kannada/Tamil (10 Marks)\n"
+                    "Regional language proficiency."
+                )
+                default_weights = [
+                    {"subject": "Part I: General Knowledge", "weight": 50.0},
+                    {"subject": "Part II: Simple Arithmetic & Mental Ability", "weight": 20.0},
+                    {"subject": "Part III: General English", "weight": 20.0},
+                    {"subject": "Part IV: Regional Language", "weight": 10.0}
                 ]
             else:
+                details = (
+                    "### Part I: General Studies & Current Affairs (40 Marks)\n"
+                    "History, Geography, Constitution, General Science, and Current Affairs.\n\n"
+                    "### Part II: Simple Arithmetic & Mental Ability (20 Marks)\n"
+                    "Numerical ability, logical reasoning, and calculations.\n\n"
+                    "### Part III: General English (20 Marks)\n"
+                    "English grammar, sentence structures, and vocabulary.\n\n"
+                    "### Part IV: Regional Language (20 Marks)\n"
+                    "Regional language grammar, comprehension, and translations."
+                )
                 default_weights = [
                     {"subject": "General Studies & Current Affairs", "weight": 40.0},
-                    {"subject": "English Language & Grammar", "weight": 20.0},
-                    {"subject": "Regional Language", "weight": 20.0},
-                    {"subject": "Arithmetic & Mental Ability", "weight": 20.0}
+                    {"subject": "Simple Arithmetic & Mental Ability", "weight": 20.0},
+                    {"subject": "General English", "weight": 20.0},
+                    {"subject": "Regional Language", "weight": 20.0}
                 ]
-                
-            topics_desc = [f"- {w['subject']} ({w['weight']}% weightage)" for w in default_weights]
-            details = f"Curated Mock Exam Syllabus for {exam.name}.\n\n"
-            details += f"Total Questions: 100\n"
-            details += f"Duration: {exam.duration_minutes} minutes\n\n"
-            details += "Subject Weightages & Topics:\n"
-            details += "\n".join(topics_desc)
             
             data.append({
                 'id': -exam.id,
