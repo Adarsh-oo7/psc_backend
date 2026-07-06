@@ -290,12 +290,17 @@ class WeeklyCurrentAffairsQuizView(views.APIView):
     def get(self, request):
         from django.utils import timezone
         from datetime import timedelta
+        from .models import CurrentAffairs
         topic = Topic.objects.filter(name="Daily Current Affairs").first()
         if not topic:
             return Response([])
-        cutoff = timezone.now() - timedelta(days=10)
-        qs = Question.objects.filter(topic=topic, created_at__gte=cutoff).order_by('?')[:15]
-        if qs.count() < 10:
+        # Use CurrentAffairs.date to find recent MCQ question texts
+        cutoff = (timezone.now() - timedelta(days=10)).date()
+        recent_ca = CurrentAffairs.objects.filter(date__gte=cutoff).values_list('question', flat=True)
+        # Match Questions in the topic whose text matches recent current affairs questions
+        qs = Question.objects.filter(topic=topic, text__in=recent_ca).order_by('?')[:15]
+        if qs.count() < 5:
+            # Fallback: return random questions from the Daily Current Affairs topic
             qs = Question.objects.filter(topic=topic).order_by('?')[:15]
         serializer = QuestionSerializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
