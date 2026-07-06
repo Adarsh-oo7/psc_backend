@@ -228,11 +228,17 @@ class ProcessJoinRequestView(APIView):
 class PublicInstituteListView(generics.ListAPIView):
     """
     A public endpoint that lists all institutes so students can browse them.
+    Optional filter: ?district=<district_name>
     """
-    # We use the simple InstituteSerializer, but you could create an even simpler one if needed.
-    queryset = Institute.objects.all().order_by('name')
     serializer_class = InstituteSerializer
-    permission_classes = [AllowAny] 
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = Institute.objects.all().order_by('name')
+        district = self.request.query_params.get('district')
+        if district:
+            queryset = queryset.filter(address__icontains=district)
+        return queryset 
 
 
 class PublicInstituteDetailView(generics.RetrieveAPIView):

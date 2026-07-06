@@ -58,7 +58,24 @@ class QuestionEngine:
                 target_exams = QuestionEngine._resolve_similar_exams(user_prefs)
                 
         if target_exams.exists():
-            queryset = queryset.filter(exams__in=target_exams).distinct()
+            queryset = queryset.filter(exams__in=target_exams)
+            
+            # Filter strictly by syllabus topics if configured in syllabus_db
+            from .syllabus_db import resolve_exam_slug, SYLLABUS_DATABASE
+            allowed_topics = set()
+            for exam in target_exams:
+                slug_key = resolve_exam_slug(exam.slug)
+                if slug_key and slug_key in SYLLABUS_DATABASE:
+                    for item in SYLLABUS_DATABASE[slug_key]['syllabus']:
+                        allowed_topics.add(item['topic'].lower())
+            
+            if allowed_topics:
+                q_topic_filter = Q()
+                for topic_name in allowed_topics:
+                    q_topic_filter |= Q(topic__name__icontains=topic_name)
+                queryset = queryset.filter(q_topic_filter)
+                
+            queryset = queryset.distinct()
         if filters.get('topic_id'):
             queryset = queryset.filter(topic_id=filters['topic_id'])
         if filters.get('topic_ids'):

@@ -321,15 +321,32 @@ class GenerateMockExamView(views.APIView):
                 q_obj |= Q(name__icontains=word)
             similar_exams = Exam.objects.filter(q_obj)
 
-        if not syllabus_parts.exists():
-            syllabus_parts = ExamSyllabus.objects.filter(exam__in=similar_exams)
-            
+        # Check static master syllabus database first
+        from .syllabus_db import resolve_exam_slug, SYLLABUS_DATABASE
+        slug_key = resolve_exam_slug(exam.slug)
+        static_syllabus = None
+        if slug_key and slug_key in SYLLABUS_DATABASE:
+            static_syllabus = SYLLABUS_DATABASE[slug_key]['syllabus']
+
         topic_num_questions = {}
-        for part in syllabus_parts:
-            topic_num_questions[part.topic_id] = max(
-                topic_num_questions.get(part.topic_id, 0),
-                part.num_questions
-            )
+        if static_syllabus:
+            for item in static_syllabus:
+                t_name = item['topic']
+                marks = item['marks']
+                topic_obj = Topic.objects.filter(name__icontains=t_name).first()
+                if not topic_obj:
+                    from django.utils.text import slugify
+                    topic_obj = Topic.objects.create(name=t_name, slug=slugify(t_name))
+                topic_num_questions[topic_obj.id] = marks
+        else:
+            if not syllabus_parts.exists():
+                syllabus_parts = ExamSyllabus.objects.filter(exam__in=similar_exams)
+                
+            for part in syllabus_parts:
+                topic_num_questions[part.topic_id] = max(
+                    topic_num_questions.get(part.topic_id, 0),
+                    part.num_questions
+                )
             
         all_questions = []
         seen_ids = set()
@@ -341,7 +358,16 @@ class GenerateMockExamView(views.APIView):
             q_filter = Q(topic_id=topic_id)
             if language:
                 q_filter &= Q(language=language)
-            questions = list(Question.objects.filter(q_filter).order_by('?')[:num_qs])
+            
+            # Prefer questions linked to this or similar exams
+            exam_q_filter = q_filter & Q(exams__in=similar_exams)
+            questions = list(Question.objects.filter(exam_q_filter).order_by('?')[:num_qs])
+            
+            # Fall back to general questions under this topic if there is a deficit
+            if len(questions) < num_qs:
+                fallback_qs = list(Question.objects.filter(q_filter).exclude(id__in=[q.id for q in questions]).order_by('?')[:num_qs - len(questions)])
+                questions.extend(fallback_qs)
+                
             for q in questions:
                 if q.id not in seen_ids:
                     all_questions.append(q)
