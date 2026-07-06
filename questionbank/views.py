@@ -1994,9 +1994,23 @@ class TopicListView(generics.ListAPIView):
                 preferred_exams = Exam.objects.filter(q_obj).distinct()
 
         if preferred_exams.exists():
-            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=preferred_exams).distinct()
-            if syllabus_topics.exists():
-                base_query &= Q(id__in=syllabus_topics)
+            from .syllabus_db import resolve_exam_slug, SYLLABUS_DATABASE
+            allowed_topics = set()
+            for exam in preferred_exams:
+                slug_key = resolve_exam_slug(exam.slug)
+                if slug_key and slug_key in SYLLABUS_DATABASE:
+                    for item in SYLLABUS_DATABASE[slug_key]['syllabus']:
+                        allowed_topics.add(item['topic'].lower())
+            
+            if allowed_topics:
+                q_topic_filter = Q()
+                for topic_name in allowed_topics:
+                    q_topic_filter |= Q(name__icontains=topic_name)
+                base_query &= q_topic_filter
+            else:
+                syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=preferred_exams).distinct()
+                if syllabus_topics.exists():
+                    base_query &= Q(id__in=syllabus_topics)
                 
         return Topic.objects.filter(base_query).distinct().order_by('name')
 
@@ -2042,11 +2056,23 @@ class TopicQuestionsView(generics.ListAPIView):
                 preferred_exams = Exam.objects.filter(q_obj).distinct()
 
         if preferred_exams.exists():
-            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=preferred_exams).distinct()
-            exam_filter = Q(exams__in=preferred_exams)
-            if syllabus_topics.exists():
-                exam_filter |= Q(topic__in=syllabus_topics)
-            qs = qs.filter(exam_filter).distinct()
+            qs = qs.filter(exams__in=preferred_exams)
+            
+            from .syllabus_db import resolve_exam_slug, SYLLABUS_DATABASE
+            allowed_topics = set()
+            for exam in preferred_exams:
+                slug_key = resolve_exam_slug(exam.slug)
+                if slug_key and slug_key in SYLLABUS_DATABASE:
+                    for item in SYLLABUS_DATABASE[slug_key]['syllabus']:
+                        allowed_topics.add(item['topic'].lower())
+            
+            if allowed_topics:
+                q_topic_filter = Q()
+                for topic_name in allowed_topics:
+                    q_topic_filter |= Q(topic__name__icontains=topic_name)
+                qs = qs.filter(q_topic_filter)
+                
+            qs = qs.distinct()
         
         difficulty = self.request.query_params.get('difficulty')
         if difficulty in ('easy', 'medium', 'hard'):
