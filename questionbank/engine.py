@@ -72,6 +72,15 @@ class QuestionEngine:
         if filters.get('exclude_ids'):
             queryset = queryset.exclude(id__in=filters['exclude_ids'])
 
+        # Fall back to user's preferred language if no explicit language filter is provided
+        language_filter = filters.get('language')
+        if not language_filter and user and user.is_authenticated and hasattr(user, 'userprofile'):
+            language_filter = getattr(user.userprofile, 'preferred_language', None)
+            
+        if language_filter:
+            queryset = queryset.filter(language=language_filter)
+
+
         if user and user.is_authenticated:
             # Get all question IDs answered by this user
             answered_ids = UserAnswer.objects.filter(
@@ -115,7 +124,7 @@ class QuestionEngine:
             return queryset.order_by('?')
 
     @staticmethod
-    def get_weak_area_questions(user, limit: int = 20):
+    def get_weak_area_questions(user, limit: int = 20, language: str = None):
         """Returns questions from topics where user accuracy < 50%."""
         if not user or not user.is_authenticated:
             return Question.objects.none()
@@ -127,17 +136,25 @@ class QuestionEngine:
             total_correct__lt=F('total_attempted') * 0.5
         ).values_list('topic_id', flat=True)
 
+        filters = {'topic_ids': list(weak_topics)}
+        if language:
+            filters['language'] = language
+
         return QuestionEngine.get_questions_for_user(
             user,
-            filters={'topic_ids': list(weak_topics)},
+            filters=filters,
             limit=limit
         )
 
+
     @staticmethod
-    def get_daily_quiz(user, limit: int = 10):
+    def get_daily_quiz(user, limit: int = 10, language: str = None):
         """Returns today's daily quiz questions — unique per user per day."""
         if not user or not user.is_authenticated:
-            return QuestionEngine.get_questions_for_user(user, filters={}, limit=limit)
+            filters = {}
+            if language:
+                filters['language'] = language
+            return QuestionEngine.get_questions_for_user(user, filters=filters, limit=limit)
 
         today = timezone.localdate()
 
@@ -147,8 +164,13 @@ class QuestionEngine:
             answered_at__date=today
         ).values_list('question_id', flat=True)
 
+        filters = {'exclude_ids': list(answered_today_ids)}
+        if language:
+            filters['language'] = language
+
         return QuestionEngine.get_questions_for_user(
             user,
-            filters={'exclude_ids': list(answered_today_ids)},
+            filters=filters,
             limit=limit
         )
+

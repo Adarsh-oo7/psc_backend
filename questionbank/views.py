@@ -243,6 +243,10 @@ class QuestionListView(generics.ListAPIView):
         if difficulty:
             filters['difficulty'] = difficulty
 
+        language = self.request.query_params.get('language')
+        if language:
+            filters['language'] = language
+
         limit = self.request.query_params.get('limit')
         limit_val = int(limit) if limit and limit.isdigit() else None
 
@@ -250,17 +254,20 @@ class QuestionListView(generics.ListAPIView):
         return QuestionEngine.get_questions_for_user(user, filters, limit_val)
 
 
+
 class DailyQuestionView(views.APIView):
     """Provides a single random personalized question for a daily quiz using the engine."""
     permission_classes = [AllowAny]
     def get(self, request):
         user = request.user
+        language = request.query_params.get('language')
         from .engine import QuestionEngine
-        qs = QuestionEngine.get_daily_quiz(user, limit=1)
+        qs = QuestionEngine.get_daily_quiz(user, limit=1, language=language)
         if not qs.exists():
             return Response({'error': 'No questions available'}, status=status.HTTP_404_NOT_FOUND)
         question = qs.first()
         return Response(QuestionSerializer(question, context={'request': request}).data)
+
 
 
 class DailyQuizView(views.APIView):
@@ -270,10 +277,12 @@ class DailyQuizView(views.APIView):
         user = request.user
         limit = request.query_params.get('limit', '10')
         limit_val = int(limit) if limit and limit.isdigit() else 10
+        language = request.query_params.get('language')
         from .engine import QuestionEngine
-        qs = QuestionEngine.get_daily_quiz(user, limit=limit_val)
+        qs = QuestionEngine.get_daily_quiz(user, limit=limit_val, language=language)
         serializer = QuestionSerializer(qs, many=True, context={'request': request})
         return Response(serializer.data)
+
 
 
 class WeakAreaQuestionsView(generics.ListAPIView):
@@ -285,8 +294,10 @@ class WeakAreaQuestionsView(generics.ListAPIView):
         user = self.request.user
         limit = self.request.query_params.get('limit', '20')
         limit_val = int(limit) if limit and limit.isdigit() else 20
+        language = self.request.query_params.get('language')
         from .engine import QuestionEngine
-        return QuestionEngine.get_weak_area_questions(user, limit=limit_val)
+        return QuestionEngine.get_weak_area_questions(user, limit=limit_val, language=language)
+
 
 
 # ===================================================================
@@ -299,6 +310,7 @@ class GenerateMockExamView(views.APIView):
     def get(self, request, exam_id):
         exam = get_object_or_404(Exam, pk=exam_id)
         syllabus_parts = exam.syllabus_parts.all()
+        language = request.query_params.get('language')
         
         # Find similar exams if direct syllabus doesn't exist
         words = [w for w in exam.name.replace('(', '').replace(')', '').replace('/', ' ').split() if len(w) > 2]
@@ -326,7 +338,10 @@ class GenerateMockExamView(views.APIView):
         for topic_id, num_qs in topic_num_questions.items():
             if num_qs <= 0:
                 continue
-            questions = list(Question.objects.filter(topic_id=topic_id).order_by('?')[:num_qs])
+            q_filter = Q(topic_id=topic_id)
+            if language:
+                q_filter &= Q(language=language)
+            questions = list(Question.objects.filter(q_filter).order_by('?')[:num_qs])
             for q in questions:
                 if q.id not in seen_ids:
                     all_questions.append(q)
@@ -337,7 +352,10 @@ class GenerateMockExamView(views.APIView):
         if len(all_questions) < 100:
             topic_ids = list(topic_num_questions.keys())
             if topic_ids:
-                additional_qs = list(Question.objects.filter(topic_id__in=topic_ids).exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
+                q_filter = Q(topic_id__in=topic_ids)
+                if language:
+                    q_filter &= Q(language=language)
+                additional_qs = list(Question.objects.filter(q_filter).exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
                 for q in additional_qs:
                     if q.id not in seen_ids:
                         all_questions.append(q)
@@ -345,7 +363,10 @@ class GenerateMockExamView(views.APIView):
                         
         # Level 2 padding: Get questions associated with this exam or similar exams
         if len(all_questions) < 100:
-            exam_qs = list(Question.objects.filter(exams__in=similar_exams).exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
+            q_filter = Q(exams__in=similar_exams)
+            if language:
+                q_filter &= Q(language=language)
+            exam_qs = list(Question.objects.filter(q_filter).exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
             for q in exam_qs:
                 if q.id not in seen_ids:
                     all_questions.append(q)
@@ -353,7 +374,10 @@ class GenerateMockExamView(views.APIView):
                     
         # Level 3 padding: Get any general/active questions in the database
         if len(all_questions) < 100:
-            any_qs = list(Question.objects.exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
+            q_filter = Q()
+            if language:
+                q_filter &= Q(language=language)
+            any_qs = list(Question.objects.filter(q_filter).exclude(id__in=seen_ids).order_by('?')[:100 - len(all_questions)])
             for q in any_qs:
                 if q.id not in seen_ids:
                     all_questions.append(q)
@@ -369,6 +393,7 @@ class GenerateMockExamView(views.APIView):
             'questions': QuestionMockSerializer(all_questions, many=True).data
         }
         return Response(response_data)
+
 
 class SubmitAnswerView(generics.CreateAPIView):
     """Saves a user's single answer during a simple practice quiz."""

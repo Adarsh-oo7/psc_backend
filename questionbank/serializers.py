@@ -109,8 +109,9 @@ class UserProfileSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload', 
             'qualifications', 'date_of_birth', 'place', 'district', 'district_display', 'preferred_difficulty',
-            'is_owner', 'join_request_status', 'fee_status', 
+            'preferred_language', 'is_owner', 'join_request_status', 'fee_status', 
             'preferred_topics', 'preferred_topics_ids',
+
             'preferred_exams', 'preferred_exams_ids', 'bio',
             'is_content_creator', 'total_xp', 'level', 'current_streak', 
             'longest_streak', 'last_active_date', 'streak_freeze_count'

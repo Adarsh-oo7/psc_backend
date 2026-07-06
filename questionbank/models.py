@@ -186,8 +186,16 @@ class UserProfile(models.Model):
 
     # --- NEW: Field to store multiple preferred exams ---
     preferred_exams = models.ManyToManyField('Exam', blank=True, related_name='followers')
+    preferred_language = models.CharField(
+        max_length=5, 
+        choices=[('en', 'English'), ('ml', 'Malayalam')], 
+        default='en', 
+        blank=True,
+        help_text="User's preferred language for practice and quizzes"
+    )
     bio = models.TextField(blank=True, help_text="A short description or bio for the user's public profile.")
     is_owner = models.BooleanField(default=False) # We will keep this for future institute features
+
     
     # --- Gamification and Streak Fields ---
     total_xp = models.PositiveIntegerField(default=0)
