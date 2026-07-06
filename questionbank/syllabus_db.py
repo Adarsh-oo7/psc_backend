@@ -7,21 +7,14 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "Malayalam / Tamil / Kannada",
         "syllabus": [
-            {"topic": "History", "marks": 5},
-            {"topic": "Geography", "marks": 5},
-            {"topic": "Economics", "marks": 5},
-            {"topic": "Constitution and Polity", "marks": 5},
-            {"topic": "Facts About Kerala", "marks": 5}, # Governance & Admin
-            {"topic": "Biology & Public Health", "marks": 6},
-            {"topic": "Physics", "marks": 3},
-            {"topic": "Chemistry", "marks": 3},
-            {"topic": "Arts, Culture, Literature, Society", "marks": 5},
+            {"topic": "Facts About India", "marks": 15},
+            {"topic": "Constitution and Polity", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 30},
+            {"topic": "Science", "marks": 12},
             {"topic": "Computer", "marks": 3},
-            {"topic": "Important Laws", "marks": 5},
-            {"topic": "Agriculture/Vocational", "marks": 20},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 10},
-            {"topic": "General English", "marks": 10},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10}
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10}
         ]
     },
     "company-board-lgs": {
@@ -30,11 +23,12 @@ SYLLABUS_DATABASE = {
         "negative_marking": 0.0,
         "medium": "Malayalam / Tamil / Kannada",
         "syllabus": [
-            {"topic": "General Knowledge & Renaissance", "marks": 40},
-            {"topic": "Current Affairs", "marks": 20},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 20},
-            {"topic": "General English", "marks": 10},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10}
+            {"topic": "Facts About India", "marks": 25},
+            {"topic": "Facts About Kerala", "marks": 15},
+            {"topic": "Daily Current Affairs", "marks": 20},
+            {"topic": "Maths", "marks": 20},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10}
         ]
     },
     "ldc-lgs-august-2026": {
@@ -43,11 +37,11 @@ SYLLABUS_DATABASE = {
         "negative_marking": 0.0,
         "medium": "Malayalam / Tamil / Kannada",
         "syllabus": [
-            {"topic": "General Knowledge & Renaissance", "marks": 20},
-            {"topic": "Current Affairs", "marks": 20},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 20},
-            {"topic": "General English", "marks": 10},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10},
+            {"topic": "Facts About India", "marks": 20},
+            {"topic": "Daily Current Affairs", "marks": 20},
+            {"topic": "Maths", "marks": 20},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10},
             {"topic": "Science", "marks": 20}
         ]
     },
@@ -57,16 +51,8 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "English",
         "syllabus": [
-            {"topic": "Basic Electricity", "marks": 10},
-            {"topic": "Ohm's Law", "marks": 10},
-            {"topic": "Magnetism", "marks": 10},
-            {"topic": "AC & Earthing", "marks": 10},
-            {"topic": "DC Machines", "marks": 10},
-            {"topic": "AC Motors", "marks": 10},
-            {"topic": "Instruments & Transformers", "marks": 10},
-            {"topic": "Illumination & Electronics", "marks": 10},
-            {"topic": "Power Generation", "marks": 10},
-            {"topic": "Transmission & Distribution", "marks": 10}
+            {"topic": "Physics — Electricity & Magnetism", "marks": 60},
+            {"topic": "Science", "marks": 40}
         ]
     },
     "fire-and-rescue": {
@@ -75,20 +61,14 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "Malayalam / Tamil / Kannada",
         "syllabus": [
-            {"topic": "History", "marks": 5},
-            {"topic": "Geography", "marks": 5},
-            {"topic": "Economics", "marks": 5},
+            {"topic": "Facts About India", "marks": 15},
+            {"topic": "Facts About Kerala", "marks": 27},
             {"topic": "Constitution and Polity", "marks": 8},
-            {"topic": "Facts About Kerala", "marks": 3},
-            {"topic": "Biology & Public Health", "marks": 4},
-            {"topic": "Physics", "marks": 3},
-            {"topic": "Chemistry", "marks": 3},
-            {"topic": "Arts, Culture, Literature, Society", "marks": 4},
-            {"topic": "Current Affairs", "marks": 10},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 10},
-            {"topic": "General English", "marks": 10},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10},
-            {"topic": "Fire & Rescue Operations", "marks": 20}
+            {"topic": "Science", "marks": 10},
+            {"topic": "Daily Current Affairs", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10}
         ]
     },
     "ksrtc-conductor": {
@@ -97,10 +77,10 @@ SYLLABUS_DATABASE = {
         "negative_marking": 0.0,
         "medium": "Malayalam",
         "syllabus": [
-            {"topic": "General Studies & Current Affairs", "marks": 40},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 20},
-            {"topic": "General English", "marks": 20},
-            {"topic": "Special Topic (KSRTC operations)", "marks": 20}
+            {"topic": "Facts About India", "marks": 40},
+            {"topic": "Maths", "marks": 20},
+            {"topic": "English", "marks": 20},
+            {"topic": "Facts About Kerala", "marks": 20}
         ]
     },
     "university-assistant": {
@@ -109,17 +89,14 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "Malayalam / Tamil / Kannada",
         "syllabus": [
-            {"topic": "History", "marks": 10},
-            {"topic": "Geography", "marks": 5},
-            {"topic": "Economics", "marks": 5},
-            {"topic": "Civics", "marks": 5},
+            {"topic": "Facts About India", "marks": 20},
             {"topic": "Constitution and Polity", "marks": 5},
-            {"topic": "Arts, Culture, Literature, Society", "marks": 10},
-            {"topic": "Computer", "marks": 5},
+            {"topic": "Facts About Kerala", "marks": 10},
             {"topic": "Science", "marks": 5},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 20},
-            {"topic": "General English", "marks": 20},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10}
+            {"topic": "Computer", "marks": 5},
+            {"topic": "Maths", "marks": 20},
+            {"topic": "English", "marks": 20},
+            {"topic": "Malayalam", "marks": 15}
         ]
     },
     "secretariat-assistant-auditor": {
@@ -128,17 +105,14 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "English",
         "syllabus": [
-            {"topic": "History", "marks": 10},
-            {"topic": "Geography", "marks": 5},
-            {"topic": "Economics", "marks": 5},
-            {"topic": "Civics", "marks": 5},
+            {"topic": "Facts About India", "marks": 20},
             {"topic": "Constitution and Polity", "marks": 5},
-            {"topic": "Arts, Culture, Literature, Society", "marks": 10},
-            {"topic": "Computer", "marks": 5},
+            {"topic": "Facts About Kerala", "marks": 10},
             {"topic": "Science", "marks": 5},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 20},
-            {"topic": "General English", "marks": 20},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10}
+            {"topic": "Computer", "marks": 5},
+            {"topic": "Maths", "marks": 20},
+            {"topic": "English", "marks": 20},
+            {"topic": "Malayalam", "marks": 15}
         ]
     },
     "degree-level-preliminary-exam-2025": {
@@ -147,17 +121,14 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "Malayalam / Tamil / Kannada",
         "syllabus": [
-            {"topic": "History", "marks": 10},
-            {"topic": "Geography", "marks": 5},
-            {"topic": "Economics", "marks": 5},
-            {"topic": "Civics", "marks": 5},
+            {"topic": "Facts About India", "marks": 20},
             {"topic": "Constitution and Polity", "marks": 5},
-            {"topic": "Arts, Culture, Literature, Society", "marks": 10},
-            {"topic": "Computer", "marks": 5},
+            {"topic": "Facts About Kerala", "marks": 10},
             {"topic": "Science", "marks": 5},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 20},
-            {"topic": "General English", "marks": 20},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10}
+            {"topic": "Computer", "marks": 5},
+            {"topic": "Maths", "marks": 20},
+            {"topic": "English", "marks": 20},
+            {"topic": "Malayalam", "marks": 15}
         ]
     },
     "lp-up-school-teacher": {
@@ -166,11 +137,10 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "Malayalam",
         "syllabus": [
-            {"topic": "Educational Psychology & Pedagogy", "marks": 20},
+            {"topic": "Facts About India", "marks": 50},
             {"topic": "Science", "marks": 30},
-            {"topic": "General Knowledge & Renaissance", "marks": 30},
-            {"topic": "General English", "marks": 10},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 10}
+            {"topic": "English", "marks": 10},
+            {"topic": "Maths", "marks": 10}
         ]
     },
     "kwa-operator": {
@@ -179,20 +149,8 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "English",
         "syllabus": [
-            {"topic": "Basic Electricity", "marks": 15},
-            {"topic": "Electrostatics and Electromagnetism", "marks": 5},
-            {"topic": "Fundamentals of AC Systems", "marks": 5},
-            {"topic": "Instruments & Transformers", "marks": 5},
-            {"topic": "Safety, First Aid, Batteries and Solar Cell", "marks": 5},
-            {"topic": "Wiring Accessories", "marks": 5},
-            {"topic": "DC Machines", "marks": 5},
-            {"topic": "AC Motors", "marks": 5},
-            {"topic": "Digital Electronics", "marks": 5},
-            {"topic": "Power Electronics", "marks": 5},
-            {"topic": "Pumps and Fastenings", "marks": 10},
-            {"topic": "I.C. Engines", "marks": 10},
-            {"topic": "Power Transmission", "marks": 10},
-            {"topic": "Fluid Valves", "marks": 10}
+            {"topic": "Physics — Electricity & Magnetism", "marks": 40},
+            {"topic": "Science", "marks": 60}
         ]
     },
     "sub-inspector-mains": {
@@ -201,16 +159,14 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "Malayalam / Tamil / Kannada",
         "syllabus": [
-            {"topic": "History", "marks": 3},
-            {"topic": "Geography", "marks": 3},
-            {"topic": "Economics", "marks": 3},
+            {"topic": "Facts About India", "marks": 9},
             {"topic": "Facts About Kerala", "marks": 5},
-            {"topic": "Biology & Public Health", "marks": 6},
-            {"topic": "Current Affairs", "marks": 5},
-            {"topic": "Simple Arithmetic & Mental Ability", "marks": 10},
-            {"topic": "General English", "marks": 10},
-            {"topic": "Regional Language (Malayalam/Kannada/Tamil)", "marks": 10},
-            {"topic": "Criminal Law & Police Procedures", "marks": 45}
+            {"topic": "Constitution and Polity", "marks": 51},
+            {"topic": "Science", "marks": 6},
+            {"topic": "Daily Current Affairs", "marks": 5},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10}
         ]
     }
 }
