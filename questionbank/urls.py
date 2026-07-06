@@ -18,6 +18,7 @@ urlpatterns = [
     path('questions/', views.QuestionListView.as_view(), name='question-list'),
     path('questions/daily/', views.DailyQuestionView.as_view(), name='daily-question'),
     path('questions/daily-quiz/', views.DailyQuizView.as_view(), name='daily-quiz'),
+    path('questions/weekly-current-affairs/', views.WeeklyCurrentAffairsQuizView.as_view(), name='weekly-current-affairs'),
     path('questions/weak-areas/', views.WeakAreaQuestionsView.as_view(), name='weak-area-questions'),
     path('questions/submit/', views.SubmitQuestionView.as_view(), name='submit-question'),
     path('questions/my-submissions/', views.MySubmissionsListView.as_view(), name='my-submissions'),

@@ -309,9 +309,15 @@ def strip_markdown_fence(text: str) -> str:
 
 def save_items(items: list, pub_date: date, stdout, style) -> int:
     """Validate and save items. Returns count of saved records."""
-    from questionbank.models import CurrentAffairs
+    from questionbank.models import CurrentAffairs, Topic, Question, Exam
 
     saved = 0
+    topic_obj = Topic.objects.filter(name="Daily Current Affairs").first()
+    if not topic_obj:
+        topic_obj = Topic.objects.create(name="Daily Current Affairs", slug="daily-current-affairs")
+        
+    exams = list(Exam.objects.filter(slug__in=['company-board-lgs', 'ldc-lgs-august-2026', 'village-field-assistant']))
+
     for idx, item in enumerate(items):
         if not validate_item(item):
             stdout.write(style.WARNING(f"  [SKIP] item {idx} failed validation"))
@@ -339,7 +345,7 @@ def save_items(items: list, pub_date: date, stdout, style) -> int:
         if isinstance(source_url, str) and source_url.strip() == "":
             source_url = None
 
-        CurrentAffairs.objects.create(
+        ca = CurrentAffairs.objects.create(
             title=headline,
             content=item["summary"],
             category=item["category"].capitalize(),
@@ -349,6 +355,27 @@ def save_items(items: list, pub_date: date, stdout, style) -> int:
             source_url=source_url,
             mcq=item["mcq"],
         )
+        
+        # Also create a matching Question object
+        mcq = item["mcq"]
+        options_dict = {
+            'A': mcq["options"][0],
+            'B': mcq["options"][1],
+            'C': mcq["options"][2],
+            'D': mcq["options"][3],
+        }
+        correct_key = ['A', 'B', 'C', 'D'][mcq["correct_index"]]
+        
+        q_obj = Question.objects.create(
+            text=mcq["question"],
+            options=options_dict,
+            correct_answer=correct_key,
+            explanation=mcq.get("explanation", ""),
+            topic=topic_obj,
+        )
+        for exam in exams:
+            q_obj.exams.add(exam)
+
         saved += 1
         stdout.write(style.SUCCESS(f"  [SAVED] {headline[:70]}"))
 

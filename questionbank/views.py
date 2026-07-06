@@ -284,6 +284,23 @@ class DailyQuizView(views.APIView):
         return Response(serializer.data)
 
 
+class WeeklyCurrentAffairsQuizView(views.APIView):
+    """Provides a weekly quiz of current affairs questions from the past week."""
+    permission_classes = [AllowAny]
+    def get(self, request):
+        from django.utils import timezone
+        from datetime import timedelta
+        topic = Topic.objects.filter(name="Daily Current Affairs").first()
+        if not topic:
+            return Response([])
+        cutoff = timezone.now() - timedelta(days=10)
+        qs = Question.objects.filter(topic=topic, created_at__gte=cutoff).order_by('?')[:15]
+        if qs.count() < 10:
+            qs = Question.objects.filter(topic=topic).order_by('?')[:15]
+        serializer = QuestionSerializer(qs, many=True, context={'request': request})
+        return Response(serializer.data)
+
+
 
 class WeakAreaQuestionsView(generics.ListAPIView):
     """Lists questions from topics where user accuracy is below 50%."""
