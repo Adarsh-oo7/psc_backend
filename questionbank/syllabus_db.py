@@ -51,8 +51,7 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "English",
         "syllabus": [
-            {"topic": "Physics — Electricity & Magnetism", "marks": 60},
-            {"topic": "Science", "marks": 40}
+            {"topic": "Science", "marks": 100}
         ]
     },
     "fire-and-rescue": {
@@ -149,8 +148,7 @@ SYLLABUS_DATABASE = {
         "negative_marking": -0.33,
         "medium": "English",
         "syllabus": [
-            {"topic": "Physics — Electricity & Magnetism", "marks": 40},
-            {"topic": "Science", "marks": 60}
+            {"topic": "Science", "marks": 100}
         ]
     },
     "sub-inspector-mains": {
