@@ -13,6 +13,7 @@ urlpatterns = [
 
     # --- Public Content URLs ---
     path('exams/', views.ExamListView.as_view(), name='exam-list'),
+    path('mock-tests/', views.MockTestsListView.as_view(), name='mock-tests-list'),
     path('topics/', views.TopicListView.as_view(), name='topic-list'),
     path('questions/', views.QuestionListView.as_view(), name='question-list'),
     path('questions/daily/', views.DailyQuestionView.as_view(), name='daily-question'),

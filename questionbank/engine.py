@@ -58,11 +58,7 @@ class QuestionEngine:
                 target_exams = QuestionEngine._resolve_similar_exams(user_prefs)
                 
         if target_exams.exists():
-            syllabus_topics = Topic.objects.filter(examsyllabus__exam__in=target_exams).distinct()
-            exam_filter = Q(exams__in=target_exams)
-            if syllabus_topics.exists():
-                exam_filter |= Q(topic__in=syllabus_topics)
-            queryset = queryset.filter(exam_filter).distinct()
+            queryset = queryset.filter(exams__in=target_exams).distinct()
         if filters.get('topic_id'):
             queryset = queryset.filter(topic_id=filters['topic_id'])
         if filters.get('topic_ids'):

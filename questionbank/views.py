@@ -921,6 +921,40 @@ class ModelExamListView(generics.ListAPIView):
             similar_exams = Exam.objects.filter(q_obj)
         return ModelExam.objects.filter(exam__in=similar_exams)
 
+class MockTestsListView(generics.ListAPIView):
+    """
+    Returns mock tests (model exams) filtered by exam_type query parameter.
+    """
+    serializer_class = ModelExamSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        exam_type = self.request.query_params.get('exam_type')
+        if not exam_type:
+            return ModelExam.objects.all()
+
+        normalized_slug = exam_type.replace('_', '-')
+        exams = Exam.objects.filter(Q(slug__iexact=normalized_slug) | Q(slug__iexact=exam_type))
+        
+        if not exams.exists():
+            words = [w for w in normalized_slug.split('-') if len(w) > 2]
+            if words:
+                q_obj = Q()
+                for word in words:
+                    q_obj |= Q(slug__icontains=word) | Q(name__icontains=word)
+                exams = Exam.objects.filter(q_obj)
+
+        if exams.exists():
+            model_exams = ModelExam.objects.filter(exam__in=exams)
+            if model_exams.exists():
+                return model_exams
+            
+            if 'lgs' in normalized_slug.lower():
+                lgs_exams = Exam.objects.filter(slug__icontains='lgs')
+                return ModelExam.objects.filter(exam__in=lgs_exams)
+
+        return ModelExam.objects.none()
+
 class ModelExamDetailView(generics.RetrieveAPIView):
     """Returns the details and all questions for a single model exam."""
     queryset = ModelExam.objects.all()
