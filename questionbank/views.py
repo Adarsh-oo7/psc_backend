@@ -333,7 +333,9 @@ class GenerateMockExamView(views.APIView):
             for item in static_syllabus:
                 t_name = item['topic']
                 marks = item['marks']
-                topic_obj = Topic.objects.filter(name__icontains=t_name).first()
+                topic_obj = Topic.objects.filter(name__iexact=t_name).first()
+                if not topic_obj:
+                    topic_obj = Topic.objects.filter(name__icontains=t_name).first()
                 if not topic_obj:
                     from django.utils.text import slugify
                     topic_obj = Topic.objects.create(name=t_name, slug=slugify(t_name))
