@@ -2138,7 +2138,8 @@ class PracticeStartView(generics.CreateAPIView):
 
         if session_type == 'weak_area':
             # Drill weak areas
-            questions_queryset = QuestionEngine.get_weak_area_questions(user, limit=count)
+            language = request.data.get('language')
+            questions_queryset = QuestionEngine.get_weak_area_questions(user, limit=count, language=language)
         else:
             # Build filters
             filters = {}
@@ -2146,6 +2147,10 @@ class PracticeStartView(generics.CreateAPIView):
                 filters['topic_id'] = topic.id
             if difficulty in ('easy', 'medium', 'hard'):
                 filters['difficulty'] = difficulty
+            
+            language = request.data.get('language')
+            if language:
+                filters['language'] = language
 
             questions_queryset = QuestionEngine.get_questions_for_user(user, filters, limit=count)
 
