@@ -780,8 +780,17 @@ class BookmarkListCreateView(generics.ListCreateAPIView):
 class ReportListCreateView(generics.ListCreateAPIView):
     serializer_class = ReportSerializer
     permission_classes = [IsAuthenticated]
+
     def get_queryset(self):
         return Report.objects.filter(user=self.request.user).order_by('-created_at')
+
+    def create(self, request, *args, **kwargs):
+        try:
+            return super().create(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error creating question report: {str(e)}", exc_info=True)
+            return Response({'detail': f"Could not create report: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
