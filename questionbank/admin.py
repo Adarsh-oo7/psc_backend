@@ -756,12 +756,8 @@ class ReportAdmin(admin.ModelAdmin):
         return custom_urls + urls
 
     def _call_gemini_fix(self, report):
-        """Call Gemini API with strict PSC formatting prompt. Returns dict or raises."""
+        """Call AI (Gemini / Groq fallback) with strict PSC formatting prompt. Returns dict or raises."""
         import os, json, requests
-
-        api_key = os.environ.get('GEMINI_REPORT_API_KEY') or os.environ.get('GEMINI_API_KEY')
-        if not api_key:
-            raise ValueError("No GEMINI_REPORT_API_KEY found in environment variables.")
 
         q = report.question
         opts = q.options if isinstance(q.options, dict) else {}
@@ -780,7 +776,7 @@ Correct Answer: {q.correct_answer}
 Explanation: {q.explanation or '(none)'}
 
 YOUR TASK:
-Analyze the reported issue and return a corrected version of this question.
+Analyze the reported issue and return a corrected, high-quality version of this question.
 
 STRICT RULES:
 1. Question text must be clear, grammatically correct English (or Malayalam if original is Malayalam)
@@ -789,7 +785,7 @@ STRICT RULES:
 4. The correct_answer must be a single uppercase letter: A, B, C, or D
 5. All 4 options must be factually distinct
 6. The explanation must clearly justify why the correct answer is right and others are wrong
-7. Do NOT change the factual content if it is already correct — only fix formatting/language/typos
+7. Do NOT change the factual content if it is already correct — only fix formatting/language/typos/options
 8. If the correct answer was wrong, fix it based on factual accuracy
 
 RETURN ONLY THIS JSON (no markdown, no extra text):
@@ -800,24 +796,61 @@ RETURN ONLY THIS JSON (no markdown, no extra text):
   "explanation": "clear explanation here"
 }}"""
 
-        url = (
-            'https://generativelanguage.googleapis.com/v1beta/'
-            f'models/gemini-1.5-flash:generateContent?key={api_key}'
-        )
-        payload = {'contents': [{'parts': [{'text': prompt}]}]}
-        response = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30)
-        response.raise_for_status()
+        raw_json = None
+        last_error = None
 
-        raw = response.json()['candidates'][0]['content']['parts'][0]['text']
+        # 1. Try Gemini API Keys and Models
+        gemini_keys = [k for k in [os.environ.get('GEMINI_REPORT_API_KEY'), os.environ.get('GEMINI_API_KEY')] if k]
+        gemini_models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
+
+        for key in gemini_keys:
+            if raw_json: break
+            for model_name in gemini_models:
+                try:
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={key}"
+                    payload = {'contents': [{'parts': [{'text': prompt}]}]}
+                    res = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=20)
+                    if res.status_code == 200:
+                        raw_json = res.json()['candidates'][0]['content']['parts'][0]['text']
+                        break
+                    else:
+                        last_error = f"Gemini ({model_name}): HTTP {res.status_code}"
+                except Exception as e:
+                    last_error = f"Gemini error: {e}"
+
+        # 2. Fallback to Groq API if Gemini failed or rate limited
+        if not raw_json and os.environ.get('GROQ_API_KEY'):
+            try:
+                groq_key = os.environ.get('GROQ_API_KEY')
+                url = "https://api.groq.com/openai/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {groq_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": "llama-3.3-70b-versatile",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"}
+                }
+                res = requests.post(url, json=payload, headers=headers, timeout=20)
+                if res.status_code == 200:
+                    raw_json = res.json()['choices'][0]['message']['content']
+                else:
+                    last_error = f"Groq API: HTTP {res.status_code}"
+            except Exception as e:
+                last_error = f"Groq API error: {e}"
+
+        if not raw_json:
+            raise ValueError(f"Could not generate AI fix. {last_error or 'Please check API keys.'}")
 
         # Strip markdown code fences if present
-        raw = raw.strip()
-        if raw.startswith('```'):
-            raw = raw.split('```')[1]
-            if raw.startswith('json'):
-                raw = raw[4:]
+        raw_json = raw_json.strip()
+        if raw_json.startswith('```'):
+            raw_json = raw_json.split('```')[1]
+            if raw_json.startswith('json'):
+                raw_json = raw_json[4:]
 
-        result = json.loads(raw.strip())
+        result = json.loads(raw_json.strip())
 
         # Validate required fields
         required = ['question_text', 'options', 'correct_answer', 'explanation']
