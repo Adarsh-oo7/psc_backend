@@ -250,10 +250,29 @@ class Bookmark(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 class Report(models.Model):
+    REPORT_TYPE_CHOICES = [
+        ('wrong_answer', 'Wrong Answer Marked as Correct'),
+        ('question_error', 'Question Text Has Error'),
+        ('bad_options', 'Options Are Wrong / Missing'),
+        ('language_issue', 'Language / Malayalam Mix Issue'),
+        ('formatting_issue', 'Formatting Problem'),
+        ('other', 'Other Issue'),
+    ]
+
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     question = models.ForeignKey('Question', on_delete=models.CASCADE)
-    reason = models.TextField()
+    report_type = models.CharField(
+        max_length=30, choices=REPORT_TYPE_CHOICES, default='other',
+        help_text='Category of the problem'
+    )
+    reason = models.TextField(help_text='User description of the problem')
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"[{self.get_report_type_display()}] Q#{self.question_id} by {self.user.username}"
 
 
 

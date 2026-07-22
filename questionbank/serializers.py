@@ -49,7 +49,8 @@ class BookmarkSerializer(serializers.ModelSerializer):
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
-        fields = ['id', 'question', 'reason', 'created_at']
+        fields = ['id', 'question', 'report_type', 'reason', 'created_at']
+        read_only_fields = ['id', 'created_at']
 
 class UserSerializer(serializers.ModelSerializer):
     full_name = serializers.CharField(source='get_full_name', read_only=True)

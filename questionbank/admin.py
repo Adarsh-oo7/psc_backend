@@ -658,9 +658,272 @@ class UserAnswerAdmin(admin.ModelAdmin):
         return obj.question.text[:50]
 
 
-# Register the remaining simple models
-admin.site.register(Bookmark)
-admin.site.register(Report)
+# ===================================================================
+# --- Report Admin with AI Analyze & Fix ---
+# ===================================================================
+
+@admin.register(Report)
+class ReportAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'report_type_badge', 'question_preview', 'user',
+        'created_at', 'report_count_for_question', 'ai_fix_link'
+    )
+    list_filter = ('report_type', 'created_at')
+    search_fields = ('question__text', 'user__username', 'reason')
+    readonly_fields = ('user', 'question', 'report_type', 'reason', 'created_at', 'question_full_preview')
+    ordering = ('-created_at',)
+    actions = ['ai_analyze_and_fix_selected']
+
+    fieldsets = (
+        ('Report Details', {
+            'fields': ('user', 'created_at', 'report_type', 'reason')
+        }),
+        ('Reported Question', {
+            'fields': ('question_full_preview',)
+        }),
+    )
+
+    def report_type_badge(self, obj):
+        colors = {
+            'wrong_answer': '#EF4444',
+            'question_error': '#F59E0B',
+            'bad_options': '#8B5CF6',
+            'language_issue': '#3B82F6',
+            'formatting_issue': '#6B7280',
+            'other': '#6B7280',
+        }
+        color = colors.get(obj.report_type, '#6B7280')
+        return format_html(
+            '<span style="background:{}20;color:{};border:1px solid {}40;'
+            'padding:2px 8px;border-radius:20px;font-size:0.75rem;font-weight:600">{}</span>',
+            color, color, color, obj.get_report_type_display()
+        )
+    report_type_badge.short_description = 'Type'
+
+    def question_preview(self, obj):
+        return obj.question.text[:70] + ('...' if len(obj.question.text) > 70 else '')
+    question_preview.short_description = 'Question'
+
+    def question_full_preview(self, obj):
+        q = obj.question
+        opts = q.options if isinstance(q.options, dict) else {}
+        opts_html = ''.join(
+            f'<div style="padding:4px 0"><strong>{k}.</strong> {v}</div>'
+            for k, v in opts.items()
+        )
+        return format_html(
+            '<div style="background:#f8f9fa;padding:16px;border-radius:8px;border:1px solid #dee2e6">'
+            '<p style="font-weight:600;margin-bottom:8px">{}</p>'
+            '{}'
+            '<p style="margin-top:10px;color:#2E8B57"><strong>Correct Answer: {}</strong></p>'
+            '<p style="color:#666;font-size:0.85rem;margin-top:4px"><em>Explanation: {}</em></p>'
+            '</div>',
+            q.text, format_html(opts_html), q.correct_answer,
+            q.explanation[:200] if q.explanation else '(none)'
+        )
+    question_full_preview.short_description = 'Full Question Preview'
+
+    def report_count_for_question(self, obj):
+        count = Report.objects.filter(question=obj.question).count()
+        if count >= 3:
+            return format_html('<span style="color:#EF4444;font-weight:700">{} reports</span>', count)
+        return format_html('<span style="color:#6B7280">{}</span>', count)
+    report_count_for_question.short_description = '# Reports'
+
+    def ai_fix_link(self, obj):
+        url = f'/admin/questionbank/report/{obj.pk}/ai-fix/'
+        return format_html(
+            '<a href="{}" style="background:#2E8B57;color:white;padding:4px 10px;'
+            'border-radius:6px;font-size:0.75rem;text-decoration:none;font-weight:600">'
+            '🤖 AI Fix</a>', url
+        )
+    ai_fix_link.short_description = 'Action'
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom_urls = [
+            path(
+                '<int:report_id>/ai-fix/',
+                self.admin_site.admin_view(self.ai_fix_view),
+                name='questionbank_report_ai_fix'
+            ),
+            path(
+                '<int:report_id>/apply-fix/',
+                self.admin_site.admin_view(self.apply_fix_view),
+                name='questionbank_report_apply_fix'
+            ),
+        ]
+        return custom_urls + urls
+
+    def _call_gemini_fix(self, report):
+        """Call Gemini API with strict PSC formatting prompt. Returns dict or raises."""
+        import os, json, requests
+
+        api_key = os.environ.get('GEMINI_REPORT_API_KEY') or os.environ.get('GEMINI_API_KEY')
+        if not api_key:
+            raise ValueError("No GEMINI_REPORT_API_KEY found in environment variables.")
+
+        q = report.question
+        opts = q.options if isinstance(q.options, dict) else {}
+        opts_str = '\n'.join(f'{k}) {v}' for k, v in opts.items())
+
+        prompt = f"""You are a Kerala PSC exam question quality expert.
+
+A user reported this question with the issue type: "{report.get_report_type_display()}"
+User's complaint: "{report.reason}"
+
+ORIGINAL QUESTION:
+Question Text: {q.text}
+Options:
+{opts_str}
+Correct Answer: {q.correct_answer}
+Explanation: {q.explanation or '(none)'}
+
+YOUR TASK:
+Analyze the reported issue and return a corrected version of this question.
+
+STRICT RULES:
+1. Question text must be clear, grammatically correct English (or Malayalam if original is Malayalam)
+2. There must be exactly 4 options labeled A, B, C, D — no more, no less
+3. Each option must be concise and unambiguous
+4. The correct_answer must be a single uppercase letter: A, B, C, or D
+5. All 4 options must be factually distinct
+6. The explanation must clearly justify why the correct answer is right and others are wrong
+7. Do NOT change the factual content if it is already correct — only fix formatting/language/typos
+8. If the correct answer was wrong, fix it based on factual accuracy
+
+RETURN ONLY THIS JSON (no markdown, no extra text):
+{{
+  "question_text": "corrected question text here",
+  "options": {{"A": "option text", "B": "option text", "C": "option text", "D": "option text"}},
+  "correct_answer": "A",
+  "explanation": "clear explanation here"
+}}"""
+
+        url = (
+            'https://generativelanguage.googleapis.com/v1beta/'
+            f'models/gemini-1.5-flash:generateContent?key={api_key}'
+        )
+        payload = {'contents': [{'parts': [{'text': prompt}]}]}
+        response = requests.post(url, json=payload, headers={'Content-Type': 'application/json'}, timeout=30)
+        response.raise_for_status()
+
+        raw = response.json()['candidates'][0]['content']['parts'][0]['text']
+
+        # Strip markdown code fences if present
+        raw = raw.strip()
+        if raw.startswith('```'):
+            raw = raw.split('```')[1]
+            if raw.startswith('json'):
+                raw = raw[4:]
+
+        result = json.loads(raw.strip())
+
+        # Validate required fields
+        required = ['question_text', 'options', 'correct_answer', 'explanation']
+        for field in required:
+            if field not in result:
+                raise ValueError(f"AI response missing field: {field}")
+
+        # Validate options have A, B, C, D
+        if set(result['options'].keys()) != {'A', 'B', 'C', 'D'}:
+            raise ValueError(f"AI options must have exactly A, B, C, D — got {list(result['options'].keys())}")
+
+        # Validate correct_answer
+        if result['correct_answer'].upper() not in ('A', 'B', 'C', 'D'):
+            raise ValueError(f"AI correct_answer must be A/B/C/D — got '{result['correct_answer']}'")
+
+        result['correct_answer'] = result['correct_answer'].upper()
+        return result
+
+    def ai_fix_view(self, request, report_id):
+        """Show AI-suggested fix side by side with original."""
+        from django.http import HttpResponse
+
+        try:
+            report = Report.objects.select_related('question', 'user').get(pk=report_id)
+        except Report.DoesNotExist:
+            messages.error(request, 'Report not found.')
+            return redirect('..')
+
+        ai_result = None
+        ai_error = None
+
+        if request.method == 'POST' and 'generate_fix' in request.POST:
+            try:
+                ai_result = self._call_gemini_fix(report)
+                # Store in session for apply step
+                request.session[f'ai_fix_{report_id}'] = ai_result
+            except Exception as e:
+                ai_error = str(e)
+                import traceback
+                ai_error += '\n' + traceback.format_exc()
+
+        elif request.method == 'GET':
+            # Check if we already generated
+            ai_result = request.session.get(f'ai_fix_{report_id}')
+
+        context = dict(
+            self.admin_site.each_context(request),
+            title=f'AI Fix — Report #{report_id}',
+            report=report,
+            question=report.question,
+            ai_result=ai_result,
+            ai_error=ai_error,
+            opts=self.model._meta,
+        )
+        return render(request, 'admin/questionbank/report/ai_fix.html', context)
+
+    def apply_fix_view(self, request, report_id):
+        """Apply the AI fix to the actual question."""
+        if request.method != 'POST':
+            return redirect(f'/admin/questionbank/report/{report_id}/ai-fix/')
+
+        try:
+            report = Report.objects.select_related('question').get(pk=report_id)
+        except Report.DoesNotExist:
+            messages.error(request, 'Report not found.')
+            return redirect('/admin/questionbank/report/')
+
+        ai_result = request.session.get(f'ai_fix_{report_id}')
+        if not ai_result:
+            messages.error(request, 'No AI result found. Please generate the fix first.')
+            return redirect(f'/admin/questionbank/report/{report_id}/ai-fix/')
+
+        try:
+            q = report.question
+            q.text = ai_result['question_text']
+            q.options = ai_result['options']
+            q.correct_answer = ai_result['correct_answer']
+            q.explanation = ai_result['explanation']
+            # Recompute hash on save
+            q.save()
+
+            # Delete this report (and all other reports for same question) once fixed
+            Report.objects.filter(question=q).delete()
+
+            # Clean up session
+            request.session.pop(f'ai_fix_{report_id}', None)
+
+            messages.success(
+                request,
+                f'✅ Question #{q.id} has been fixed by AI and all related reports have been cleared.'
+            )
+        except Exception as e:
+            messages.error(request, f'Error applying fix: {e}')
+            return redirect(f'/admin/questionbank/report/{report_id}/ai-fix/')
+
+        return redirect('/admin/questionbank/report/')
+
+    def ai_analyze_and_fix_selected(self, request, queryset):
+        """Bulk action: redirect to AI fix page for each selected report (one at a time)."""
+        first = queryset.first()
+        if first:
+            return redirect(f'/admin/questionbank/report/{first.pk}/ai-fix/')
+        self.message_user(request, 'No reports selected.', messages.WARNING)
+    ai_analyze_and_fix_selected.short_description = '🤖 AI Analyze & Fix (first selected)'
+
+
 
 # admin.py
 from django.contrib import admin

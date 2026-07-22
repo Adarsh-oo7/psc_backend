@@ -1,0 +1,131 @@
+{% extends "admin/base_site.html" %}
+{% block content %}
+<style>
+  .ai-fix-wrap { max-width: 1100px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+  .report-badge { display: inline-block; background: #fff3cd; color: #856404; border: 1px solid #ffc10740; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
+  .panel { background: #fff; border: 1px solid #dee2e6; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
+  .panel h3 { margin: 0 0 16px 0; font-size: 1rem; font-weight: 700; color: #212529; }
+  .q-text { font-weight: 600; font-size: 1rem; margin-bottom: 12px; line-height: 1.6; }
+  .option-row { padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; background: #f8f9fa; border: 1px solid #e9ecef; font-size: 0.9rem; }
+  .option-row.correct { background: #d1e7dd; border-color: #a3cfbb; }
+  .correct-label { color: #198754; font-weight: 700; }
+  .explanation-box { background: #cfe2ff; border: 1px solid #9ec5fe; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 0.875rem; color: #084298; }
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .ai-panel { border-color: #2E8B57 !important; }
+  .ai-panel h3 { color: #2E8B57; }
+  .btn-generate { background: #2E8B57; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
+  .btn-apply { background: #0d6efd; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; margin-left: 12px; }
+  .btn-back { background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
+  .error-box { background: #f8d7da; border: 1px solid #f5c2c7; border-radius: 8px; padding: 12px; color: #842029; font-size: 0.85rem; white-space: pre-wrap; font-family: monospace; margin-top: 12px; }
+  .report-info { background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (max-width: 768px) { .panels { grid-template-columns: 1fr; } }
+</style>
+
+<div class="ai-fix-wrap">
+  <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap">
+    <a href="/admin/questionbank/report/" class="btn-back">&#8592; Back to Reports</a>
+    <h2 style="margin:0; font-size:1.2rem">&#x1F916; AI Fix &mdash; Report #{{ report.id }}</h2>
+  </div>
+
+  <!-- Report Info -->
+  <div class="report-info">
+    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
+      <span class="report-badge">{{ report.get_report_type_display }}</span>
+      <span style="color:#555; font-size:0.875rem">
+        Reported by <strong>{{ report.user.username }}</strong>
+        on {{ report.created_at|date:"d M Y H:i" }}
+      </span>
+    </div>
+    {% if report.reason %}
+      <div style="margin-top:10px; color:#5d4037; font-size:0.9rem">
+        <strong>User's complaint:</strong> &ldquo;{{ report.reason }}&rdquo;
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Side-by-side panels -->
+  <div class="panels">
+
+    <!-- Original Question -->
+    <div class="panel">
+      <h3>&#x1F4C4; Original Question (Q#{{ question.id }})</h3>
+      <div class="q-text">{{ question.text }}</div>
+      {% for key, val in question.options.items %}
+        <div class="option-row {% if key == question.correct_answer %}correct{% endif %}">
+          <strong>{{ key }}.</strong> {{ val }}
+          {% if key == question.correct_answer %}<span class="correct-label"> &#10003; Correct</span>{% endif %}
+        </div>
+      {% endfor %}
+      {% if question.explanation %}
+        <div class="explanation-box">
+          <strong>Explanation:</strong> {{ question.explanation }}
+        </div>
+      {% endif %}
+    </div>
+
+    <!-- AI Fix Panel -->
+    <div class="panel ai-panel">
+      <h3>&#x2728; AI Suggested Fix</h3>
+      {% if ai_result %}
+        <div class="q-text">{{ ai_result.question_text }}</div>
+        {% for key, val in ai_result.options.items %}
+          <div class="option-row {% if key == ai_result.correct_answer %}correct{% endif %}">
+            <strong>{{ key }}.</strong> {{ val }}
+            {% if key == ai_result.correct_answer %}<span class="correct-label"> &#10003; Correct</span>{% endif %}
+          </div>
+        {% endfor %}
+        {% if ai_result.explanation %}
+          <div class="explanation-box">
+            <strong>Explanation:</strong> {{ ai_result.explanation }}
+          </div>
+        {% endif %}
+
+        <div style="margin-top:20px; padding-top:16px; border-top:1px solid #c3e6cb">
+          <p style="color:#155724; font-size:0.85rem; margin-bottom:10px">
+            &#9888;&#65039; Clicking <strong>Apply Fix</strong> will update the question in the database
+            and delete all reports for this question.
+          </p>
+          <form method="POST" action="/admin/questionbank/report/{{ report.id }}/apply-fix/" style="display:inline">
+            {% csrf_token %}
+            <button
+              type="submit"
+              class="btn-apply"
+              onclick="return confirm('Apply this AI fix and delete all related reports?')"
+            >
+              &#9989; Apply This Fix
+            </button>
+          </form>
+        </div>
+      {% else %}
+        <div style="color:#888; font-style:italic; padding:30px 0; text-align:center">
+          Click <strong>Generate AI Fix</strong> below to get the corrected version.
+        </div>
+      {% endif %}
+
+      {% if ai_error %}
+        <div class="error-box"><strong>Error from Gemini:</strong><br>{{ ai_error }}</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Generate Button -->
+  <form method="POST">
+    {% csrf_token %}
+    <button
+      type="submit"
+      name="generate_fix"
+      value="1"
+      class="btn-generate"
+      id="generateBtn"
+      onclick="document.getElementById('generateBtn').innerHTML='<span class=spinner></span>Calling Gemini AI&hellip;'; document.getElementById('generateBtn').disabled=true;"
+    >
+      &#x1F916; {% if ai_result %}Re-generate AI Fix{% else %}Generate AI Fix{% endif %}
+    </button>
+    <span style="color:#666; font-size:0.8rem; margin-left:12px">
+      Uses GEMINI_REPORT_API_KEY &mdash; takes ~5 seconds
+    </span>
+  </form>
+</div>
+{% endblock %}
