@@ -1,45 +1,52 @@
 {% extends "admin/base_site.html" %}
 {% block content %}
 <style>
-  .ai-fix-wrap { max-width: 1100px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .report-badge { display: inline-block; background: #fff3cd; color: #856404; border: 1px solid #ffc10740; padding: 3px 10px; border-radius: 20px; font-size: 0.8rem; font-weight: 600; }
-  .panel { background: #fff; border: 1px solid #dee2e6; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
-  .panel h3 { margin: 0 0 16px 0; font-size: 1rem; font-weight: 700; color: #212529; }
-  .q-text { font-weight: 600; font-size: 1rem; margin-bottom: 12px; line-height: 1.6; }
-  .option-row { padding: 8px 12px; border-radius: 6px; margin-bottom: 6px; background: #f8f9fa; border: 1px solid #e9ecef; font-size: 0.9rem; }
-  .option-row.correct { background: #d1e7dd; border-color: #a3cfbb; }
-  .correct-label { color: #198754; font-weight: 700; }
-  .explanation-box { background: #cfe2ff; border: 1px solid #9ec5fe; border-radius: 8px; padding: 12px; margin-top: 12px; font-size: 0.875rem; color: #084298; }
+  .ai-fix-wrap { max-width: 1100px; margin: 0 auto; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1e293b; }
+  .report-badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; padding: 4px 12px; border-radius: 20px; font-size: 0.8rem; font-weight: 700; }
+  .panel { background: #ffffff !important; border: 1px solid #cbd5e1 !important; border-radius: 14px; padding: 24px; margin-bottom: 20px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); color: #0f172a !important; }
+  .panel h3 { margin: 0 0 16px 0; font-size: 1.05rem; font-weight: 800; color: #0f172a !important; }
+  .q-text { font-weight: 700; font-size: 1.05rem; margin-bottom: 16px; line-height: 1.6; color: #0f172a !important; }
+  .option-row { padding: 10px 14px; border-radius: 8px; margin-bottom: 8px; background: #f8fafc !important; border: 1px solid #e2e8f0 !important; font-size: 0.95rem; color: #1e293b !important; }
+  .option-row strong { color: #0f172a !important; }
+  .option-row.correct { background: #dcfce7 !important; border-color: #86efac !important; color: #14532d !important; font-weight: 600; }
+  .correct-label { color: #16a34a !important; font-weight: 800; }
+  .explanation-box { background: #eff6ff !important; border: 1px solid #bfdbfe !important; border-radius: 10px; padding: 14px; margin-top: 16px; font-size: 0.9rem; color: #1e40af !important; line-height: 1.6; }
+  .explanation-box strong { color: #1e3a8a !important; }
   .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-  .ai-panel { border-color: #2E8B57 !important; }
-  .ai-panel h3 { color: #2E8B57; }
-  .btn-generate { background: #2E8B57; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
-  .btn-apply { background: #0d6efd; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 0.95rem; font-weight: 700; cursor: pointer; margin-left: 12px; }
-  .btn-back { background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
-  .error-box { background: #f8d7da; border: 1px solid #f5c2c7; border-radius: 8px; padding: 12px; color: #842029; font-size: 0.85rem; white-space: pre-wrap; font-family: monospace; margin-top: 12px; }
-  .report-info { background: #fff8e1; border: 1px solid #ffe082; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+  .ai-panel { border-color: #10b981 !important; }
+  .ai-panel h3 { color: #047857 !important; }
+  .btn-generate { background: #059669; color: white !important; border: none; padding: 12px 24px; border-radius: 10px; font-size: 0.95rem; font-weight: 700; cursor: pointer; box-shadow: 0 2px 6px rgba(5,150,105,0.3); }
+  .btn-generate:hover { background: #047857; }
+  .btn-apply { background: #2563eb; color: white !important; border: none; padding: 12px 24px; border-radius: 10px; font-size: 0.95rem; font-weight: 700; cursor: pointer; }
+  .btn-apply:hover { background: #1d4ed8; }
+  .btn-back { background: #475569; color: white !important; border: none; padding: 8px 16px; border-radius: 8px; font-size: 0.85rem; font-weight: 600; cursor: pointer; text-decoration: none; display: inline-block; }
+  .btn-back:hover { background: #334155; }
+  .error-box { background: #fef2f2 !important; border: 1px solid #fecaca !important; border-radius: 10px; padding: 14px; color: #991b1b !important; font-size: 0.85rem; white-space: pre-wrap; font-family: monospace; margin-top: 12px; }
+  .report-info { background: #fffbeb !important; border: 1px solid #fde68a !important; border-radius: 12px; padding: 18px; margin-bottom: 20px; color: #78350f !important; }
+  .report-info span { color: #451a03 !important; }
+  .report-info strong { color: #78350f !important; }
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff; border-radius: 50%; animation: spin 0.6s linear infinite; vertical-align: middle; margin-right: 6px; }
   @keyframes spin { to { transform: rotate(360deg); } }
   @media (max-width: 768px) { .panels { grid-template-columns: 1fr; } }
 </style>
 
 <div class="ai-fix-wrap">
-  <div style="display:flex; align-items:center; gap:12px; margin-bottom:20px; flex-wrap:wrap">
+  <div style="display:flex; align-items:center; gap:14px; margin-bottom:20px; flex-wrap:wrap">
     <a href="/admin/questionbank/report/" class="btn-back">&#8592; Back to Reports</a>
-    <h2 style="margin:0; font-size:1.2rem">&#x1F916; AI Fix &mdash; Report #{{ report.id }}</h2>
+    <h2 style="margin:0; font-size:1.3rem; font-weight:800; color:var(--body-fg, #fff)">&#x1F916; AI Fix &mdash; Report #{{ report.id }}</h2>
   </div>
 
   <!-- Report Info -->
   <div class="report-info">
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap">
       <span class="report-badge">{{ report.get_report_type_display }}</span>
-      <span style="color:#555; font-size:0.875rem">
+      <span style="font-size:0.875rem">
         Reported by <strong>{{ report.user.username }}</strong>
         on {{ report.created_at|date:"d M Y H:i" }}
       </span>
     </div>
     {% if report.reason %}
-      <div style="margin-top:10px; color:#5d4037; font-size:0.9rem">
+      <div style="margin-top:10px; font-size:0.92rem; font-weight:500">
         <strong>User's complaint:</strong> &ldquo;{{ report.reason }}&rdquo;
       </div>
     {% endif %}
@@ -82,8 +89,8 @@
           </div>
         {% endif %}
 
-        <div style="margin-top:20px; padding-top:16px; border-top:1px solid #c3e6cb">
-          <p style="color:#155724; font-size:0.85rem; margin-bottom:10px">
+        <div style="margin-top:20px; padding-top:16px; border-top:1px solid #bbf7d0">
+          <p style="color:#166534; font-size:0.85rem; margin-bottom:12px; font-weight:600">
             &#9888;&#65039; Clicking <strong>Apply Fix</strong> will update the question in the database
             and delete all reports for this question.
           </p>
@@ -99,7 +106,7 @@
           </form>
         </div>
       {% else %}
-        <div style="color:#888; font-style:italic; padding:30px 0; text-align:center">
+        <div style="color:#64748b; font-style:italic; padding:30px 0; text-align:center; font-weight:500">
           Click <strong>Generate AI Fix</strong> below to get the corrected version.
         </div>
       {% endif %}
@@ -111,7 +118,7 @@
   </div>
 
   <!-- Generate Button -->
-  <form method="POST">
+  <form method="POST" style="margin-top:10px">
     {% csrf_token %}
     <button
       type="submit"
@@ -123,7 +130,7 @@
     >
       &#x1F916; {% if ai_result %}Re-generate AI Fix{% else %}Generate AI Fix{% endif %}
     </button>
-    <span style="color:#666; font-size:0.8rem; margin-left:12px">
+    <span style="color:#94a3b8; font-size:0.8rem; margin-left:12px">
       Uses GEMINI_REPORT_API_KEY &mdash; takes ~5 seconds
     </span>
   </form>
