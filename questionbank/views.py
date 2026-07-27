@@ -235,11 +235,11 @@ class QuestionListView(generics.ListAPIView):
         user = self.request.user
         filters = {}
 
-        exam_id = self.request.query_params.get('exam_id')
+        exam_id = self.request.query_params.get('exam_id') or self.request.query_params.get('exam')
         if exam_id:
             filters['exam_id'] = exam_id
 
-        topic_id = self.request.query_params.get('topic_id')
+        topic_id = self.request.query_params.get('topic_id') or self.request.query_params.get('topic') or self.request.query_params.get('topic_name')
         if topic_id:
             filters['topic_id'] = topic_id
 

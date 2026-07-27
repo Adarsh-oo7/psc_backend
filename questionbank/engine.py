@@ -47,9 +47,17 @@ class QuestionEngine:
         from .models import Exam, Topic
         target_exams = Exam.objects.none()
         
-        if filters.get('exam_id'):
-            exam_id = filters['exam_id']
-            exam_obj = Exam.objects.filter(id=exam_id)
+        exam_query = filters.get('exam_id') or filters.get('exam')
+        if exam_query:
+            if str(exam_query).isdigit():
+                exam_obj = Exam.objects.filter(id=int(exam_query))
+            else:
+                clean_q = str(exam_query).replace('-', ' ').strip()
+                exam_obj = Exam.objects.filter(
+                    Q(slug__icontains=exam_query) | 
+                    Q(name__icontains=exam_query) | 
+                    Q(name__icontains=clean_q)
+                )
             if exam_obj.exists():
                 target_exams = QuestionEngine._resolve_similar_exams(exam_obj)
         elif user and user.is_authenticated and not filters.get('exam_ids') and hasattr(user, 'userprofile'):
@@ -72,12 +80,29 @@ class QuestionEngine:
             if allowed_topics:
                 q_topic_filter = Q()
                 for topic_name in allowed_topics:
-                    q_topic_filter |= Q(topic__name__icontains=topic_name)
-                queryset = queryset.filter(q_topic_filter)
+                    q_topic_filter |= Q(topic__name__icontains=topic_name) | Q(sub_topic__icontains=topic_name)
+                filtered_qs = queryset.filter(q_topic_filter)
+                if filtered_qs.exists():
+                    queryset = filtered_qs
                 
             queryset = queryset.distinct()
-        if filters.get('topic_id'):
-            queryset = queryset.filter(topic_id=filters['topic_id'])
+
+        # Handle explicit topic query (topic_id, topic_name, topic, sub_topic)
+        topic_query = filters.get('topic_id') or filters.get('topic') or filters.get('topic_name')
+        if topic_query:
+            if str(topic_query).isdigit():
+                t_qs = queryset.filter(topic_id=int(topic_query))
+            else:
+                clean_t = str(topic_query).replace('-', ' ').strip()
+                t_qs = queryset.filter(
+                    Q(topic__name__icontains=topic_query) | 
+                    Q(topic__name__icontains=clean_t) |
+                    Q(sub_topic__icontains=topic_query) |
+                    Q(sub_topic__icontains=clean_t)
+                )
+            if t_qs.exists():
+                queryset = t_qs
+
         if filters.get('topic_ids'):
             queryset = queryset.filter(topic_id__in=filters['topic_ids'])
         if filters.get('difficulty'):
