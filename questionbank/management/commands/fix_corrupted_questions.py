@@ -105,7 +105,11 @@ class Command(BaseCommand):
                     logger.warning(f"AI repair failed for Question ID {q.id}: {err}")
 
             if modified:
-                q.save()
+                try:
+                    q.save()
+                except Exception as err:
+                    self.stdout.write(self.style.WARNING(f"Duplicate question detected (ID {q.id}). Deleting duplicate entry..."))
+                    q.delete()
 
         self.stdout.write(self.style.SUCCESS(
             f"Finished cleanup! Fixed {regex_fixed} embedded option questions, "
