@@ -75,10 +75,14 @@ class Command(BaseCommand):
         self.stdout.write(self.style.WARNING(f"Found {total_found} questions with mismatched option language/content."))
 
         fixed_count = 0
+        import time
         for i, q in enumerate(corrupted_questions, 1):
-            try:
-                lang = 'Malayalam' if bool(malayalam_pattern.search(q.text)) else 'English'
-                prompt = f"""You are a Senior Kerala PSC Exam Creator.
+            success = False
+            retries = 0
+            while not success and retries < 3:
+                try:
+                    lang = 'Malayalam' if bool(malayalam_pattern.search(q.text)) else 'English'
+                    prompt = f"""You are a Senior Kerala PSC Exam Creator.
 Below is a Kerala PSC question whose current options are corrupted or language-mismatched.
 
 Question: {q.text}
@@ -102,24 +106,34 @@ Return ONLY a JSON object:
   "explanation": "Brief explanation"
 }}
 """
-                response = model.generate_content(prompt)
-                resp_text = response.text.strip()
-                if resp_text.startswith("```"):
-                    resp_text = re.sub(r'^```(?:json)?\s*', '', resp_text)
-                    resp_text = re.sub(r'\s*```$', '', resp_text)
+                    response = model.generate_content(prompt)
+                    resp_text = response.text.strip()
+                    if resp_text.startswith("```"):
+                        resp_text = re.sub(r'^```(?:json)?\s*', '', resp_text)
+                        resp_text = re.sub(r'\s*```$', '', resp_text)
 
-                data = json.loads(resp_text)
-                if data.get('options') and isinstance(data['options'], dict) and len(data['options']) == 4:
-                    q.text = data.get('text', q.text)
-                    q.options = data['options']
-                    if data.get('correct_answer') in ['A', 'B', 'C', 'D']:
-                        q.correct_answer = data['correct_answer']
-                    if data.get('explanation'):
-                        q.explanation = data['explanation']
-                    q.save()
-                    fixed_count += 1
-                    self.stdout.write(self.style.SUCCESS(f"[{i}/{total_found}] Repaired Question ID {q.id}: {q.text[:40]}..."))
-            except Exception as err:
-                self.stdout.write(self.style.ERROR(f"[{i}/{total_found}] Failed to repair Question ID {q.id}: {err}"))
+                    data = json.loads(resp_text)
+                    if data.get('options') and isinstance(data['options'], dict) and len(data['options']) == 4:
+                        q.text = data.get('text', q.text)
+                        q.options = data['options']
+                        if data.get('correct_answer') in ['A', 'B', 'C', 'D']:
+                            q.correct_answer = data['correct_answer']
+                        if data.get('explanation'):
+                            q.explanation = data['explanation']
+                        q.save()
+                        fixed_count += 1
+                        self.stdout.write(self.style.SUCCESS(f"[{i}/{total_found}] Repaired Question ID {q.id}: {q.text[:40]}..."))
+                        success = True
+                except Exception as err:
+                    err_str = str(err)
+                    if '429' in err_str or 'quota' in err_str.lower():
+                        self.stdout.write(self.style.WARNING(f"Rate limit hit. Waiting 15s before retry..."))
+                        time.sleep(15)
+                        retries += 1
+                    else:
+                        self.stdout.write(self.style.ERROR(f"[{i}/{total_found}] Failed to repair Question ID {q.id}: {err}"))
+                        break
+            # Polite delay to respect API rate limits
+            time.sleep(2)
 
         self.stdout.write(self.style.SUCCESS(f"\nCompleted AI repair! Successfully rebuilt options for {fixed_count} questions."))
