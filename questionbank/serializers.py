@@ -670,8 +670,10 @@ class UserSubmissionSerializer(serializers.ModelSerializer):
 
 
 class MasterStudyPlanSerializer(serializers.ModelSerializer):
-    exam_name = serializers.CharField(source='exam.name', read_only=True)
-    exam_id = serializers.IntegerField(source='exam.id', read_only=True)
+    exam_name = serializers.SerializerMethodField()
+    exam_id = serializers.SerializerMethodField()
+    official_syllabus = serializers.SerializerMethodField()
+    question_pattern = serializers.SerializerMethodField()
 
     class Meta:
         model = MasterStudyPlan
@@ -679,8 +681,20 @@ class MasterStudyPlanSerializer(serializers.ModelSerializer):
             'id', 'exam_id', 'exam_name', 'title', 'description', 
             'estimated_days', 'syllabus_structure', 'weekly_milestones', 
             'mock_test_schedule', 'revision_schedule', 'pyq_schedule', 
-            'updated_at'
+            'official_syllabus', 'question_pattern', 'updated_at'
         ]
+
+    def get_exam_name(self, obj):
+        return obj.exam.name if obj.exam else ""
+
+    def get_exam_id(self, obj):
+        return obj.exam.id if obj.exam else None
+
+    def get_official_syllabus(self, obj):
+        return getattr(obj.exam, 'official_syllabus', {}) if obj.exam else {}
+
+    def get_question_pattern(self, obj):
+        return getattr(obj.exam, 'question_pattern', {}) if obj.exam else {}
 
 
 class UserExamProgressSerializer(serializers.ModelSerializer):
