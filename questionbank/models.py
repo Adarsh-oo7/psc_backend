@@ -26,6 +26,8 @@ class Exam(models.Model):
     duration_minutes = models.PositiveIntegerField(default=75, help_text="Exam duration in minutes")
     category_number = models.CharField(max_length=50, blank=True, help_text="e.g. Cat 423/2025")
     expected_exam_date = models.DateField(null=True, blank=True, help_text="Expected / scheduled exam date")
+    official_syllabus = models.JSONField(default=dict, blank=True, help_text="Official Kerala PSC Mark breakdown & SCERT topic list")
+    question_pattern = models.JSONField(default=dict, blank=True, help_text="Official Exam Pattern (100 MCQs, 75 Mins, -0.33 Negative Mark)")
 
     def __str__(self):
         return f"{self.name} ({self.year})"

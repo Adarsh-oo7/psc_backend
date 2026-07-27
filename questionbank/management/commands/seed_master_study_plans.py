@@ -2,9 +2,80 @@ from django.core.management.base import BaseCommand
 from questionbank.models import Exam, MasterStudyPlan
 
 class Command(BaseCommand):
-    help = "Seed official Kerala PSC exam dates, category numbers, and Master Study Plans"
+    help = "Seed official Kerala PSC exam dates, category numbers, official syllabus, and Master Study Plans"
 
     def handle(self, *args, **options):
+        # Default Official Question Pattern for Kerala PSC Objective Exams
+        default_question_pattern = {
+            "total_questions": 100,
+            "total_marks": 100,
+            "duration_minutes": 75,
+            "mode": "OMR Objective Type",
+            "medium": ["Malayalam", "English"],
+            "marking_scheme": "+1.0 for correct answer, -0.33 for wrong answer",
+        }
+
+        # Default Official Syllabus Structure
+        default_official_syllabus = {
+            "total_marks": 100,
+            "subjects": [
+                {
+                    "title": "General Knowledge & Kerala Renaissance",
+                    "marks": 50,
+                    "color": "#10B981",
+                    "topics": [
+                        "Kerala History, Freedom Struggle & Renaissance Movements",
+                        "Indian Geography, Rivers, Soil & Natural Resources",
+                        "Indian Constitution, Preamble & Fundamental Rights",
+                        "Human Rights Commission & Right to Information (RTI)",
+                        "Kerala State Governance, Revenue System & Panchayati Raj",
+                        "SCERT Basic Science (Physics, Chemistry & Biology)",
+                        "Current Affairs, National & International Events"
+                    ]
+                },
+                {
+                    "title": "Simple Arithmetic & Mental Ability",
+                    "marks": 20,
+                    "color": "#3B82F6",
+                    "topics": [
+                        "Numbers & Basic Arithmetical Operations",
+                        "Fractions, Decimals & Percentages",
+                        "Profit, Loss & Simple/Compound Interest",
+                        "Time & Work, Time & Distance",
+                        "Ratio & Proportion, Average",
+                        "Number Series & Coding-Decoding",
+                        "Direction Sense & Venn Diagrams"
+                    ]
+                },
+                {
+                    "title": "General English",
+                    "marks": 20,
+                    "color": "#8B5CF6",
+                    "topics": [
+                        "Types of Sentences & Correct Word Order",
+                        "Tenses, Subject-Verb Agreement",
+                        "Prepositions & Conjunctions",
+                        "Active & Passive Voice, Direct & Indirect Speech",
+                        "Vocabulary, Synonyms & Antonyms",
+                        "Idioms, Phrases & One Word Substitutes"
+                    ]
+                },
+                {
+                    "title": "Regional Language (Malayalam)",
+                    "marks": 10,
+                    "color": "#F59E0B",
+                    "topics": [
+                        "പദശുദ്ധി (Correct Usage & Spelling)",
+                        "വാക്യശുദ്ധി (Sentence Correction)",
+                        "പരിഭാഷ (English to Malayalam Translation)",
+                        "ഒറ്റപ്പദം (One Word Substitution)",
+                        "ശൈലികൾ, പഴഞ്ചൊല്ലുകൾ (Idioms & Proverbs)",
+                        "സമാസവും സന്ധിയും (Malayalam Grammar & Compounds)"
+                    ]
+                }
+            ]
+        }
+
         # Official KPSC Exam Category Numbers & Scheduled Dates
         upcoming_exams = [
             {
@@ -103,13 +174,17 @@ class Command(BaseCommand):
                     name=item["name"],
                     year=item["year"],
                     category_number=item["category_number"],
-                    expected_exam_date=item["expected_exam_date"]
+                    expected_exam_date=item["expected_exam_date"],
+                    official_syllabus=default_official_syllabus,
+                    question_pattern=default_question_pattern
                 )
                 self.stdout.write(self.style.SUCCESS(f"Created Exam: {exam.name}"))
             else:
                 for exam in exams.distinct():
                     exam.category_number = item["category_number"]
                     exam.expected_exam_date = item["expected_exam_date"]
+                    exam.official_syllabus = default_official_syllabus
+                    exam.question_pattern = default_question_pattern
                     exam.save()
                     self.stdout.write(self.style.SUCCESS(f"Updated Exam: {exam.name} ({exam.category_number} - {exam.expected_exam_date})"))
 
