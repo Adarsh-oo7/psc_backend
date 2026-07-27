@@ -1,10 +1,119 @@
 from django.core.management.base import BaseCommand
-from questionbank.models import Exam, MasterStudyPlan, Topic
+from questionbank.models import Exam, MasterStudyPlan
 
 class Command(BaseCommand):
-    help = "Seed shared Master Study Plans for top exams (LGS 2026, VFA, LDC, Company Board LGS, etc.)"
+    help = "Seed upcoming Kerala PSC exam dates, category numbers, and Master Study Plans"
 
     def handle(self, *args, **options):
+        # 1. Update Exam Category Numbers and Expected Dates
+        upcoming_exams = [
+            {
+                "name": "Company Board LGS",
+                "keywords": ["Company Board LGS", "Category 423/2025"],
+                "category_number": "Cat 423/2025",
+                "expected_exam_date": "2026-07-18",
+                "year": 2026,
+            },
+            {
+                "name": "Last Grade Servant (LGS)",
+                "keywords": ["Last Grade Servant", "LGS"],
+                "category_number": "Cat 701/2025",
+                "expected_exam_date": "2026-08-01",
+                "year": 2026,
+            },
+            {
+                "name": "Lower Division Clerk (LDC)",
+                "keywords": ["Lower Division Clerk", "LDC"],
+                "category_number": "Cat 501/2025",
+                "expected_exam_date": "2026-08-15",
+                "year": 2026,
+            },
+            {
+                "name": "Village Field Assistant (VFA)",
+                "keywords": ["Village Field Assistant", "VFA"],
+                "category_number": "Cat 571/2025",
+                "expected_exam_date": "2026-09-19",
+                "year": 2026,
+            },
+            {
+                "name": "KSEB Electricity Worker",
+                "keywords": ["KSEB Electricity Worker", "KSEB"],
+                "category_number": "Cat 612/2025",
+                "expected_exam_date": "2026-09-05",
+                "year": 2026,
+            },
+            {
+                "name": "Fire & Rescue Officer",
+                "keywords": ["Fire & Rescue", "Fireman"],
+                "category_number": "Cat 330/2025",
+                "expected_exam_date": "2026-09-26",
+                "year": 2026,
+            },
+            {
+                "name": "KSRTC Conductor",
+                "keywords": ["KSRTC Conductor", "Conductor"],
+                "category_number": "Cat 410/2025",
+                "expected_exam_date": "2026-10-03",
+                "year": 2026,
+            },
+            {
+                "name": "Degree Level Preliminary & Mains",
+                "keywords": ["Degree Level", "Degree Level Mains"],
+                "category_number": "Cat 112/2026",
+                "expected_exam_date": "2026-10-10",
+                "year": 2026,
+            },
+            {
+                "name": "University LGS",
+                "keywords": ["University LGS"],
+                "category_number": "Cat 215/2025",
+                "expected_exam_date": "2026-10-24",
+                "year": 2026,
+            },
+            {
+                "name": "Secretariat Assistant",
+                "keywords": ["Secretariat Assistant"],
+                "category_number": "Cat 089/2026",
+                "expected_exam_date": "2026-11-07",
+                "year": 2026,
+            },
+            {
+                "name": "Sub Inspector of Police (SI)",
+                "keywords": ["Sub Inspector", "SI Police"],
+                "category_number": "Cat 045/2026",
+                "expected_exam_date": "2026-11-21",
+                "year": 2026,
+            },
+            {
+                "name": "Civil Excise Officer (CEO)",
+                "keywords": ["Civil Excise Officer", "Excise Officer"],
+                "category_number": "Cat 198/2025",
+                "expected_exam_date": "2026-12-05",
+                "year": 2026,
+            },
+        ]
+
+        for item in upcoming_exams:
+            exams = Exam.objects.none()
+            for kw in item["keywords"]:
+                exams = exams | Exam.objects.filter(name__icontains=kw)
+            
+            if not exams.exists():
+                exam = Exam.objects.create(
+                    name=item["name"],
+                    year=item["year"],
+                    category_number=item["category_number"],
+                    expected_exam_date=item["expected_exam_date"]
+                )
+                self.stdout.write(self.style.SUCCESS(f"Created Exam: {exam.name}"))
+            else:
+                for exam in exams.distinct():
+                    exam.category_number = item["category_number"]
+                    exam.expected_exam_date = item["expected_exam_date"]
+                    exam.save()
+                    self.stdout.write(self.style.SUCCESS(f"Updated Exam: {exam.name} ({exam.category_number} - {exam.expected_exam_date})"))
+
+        # 2. Shared Master Study Plans
         plans_data = [
             {
                 "exam_keywords": ["Last Grade Servant", "LGS", "Company Board LGS"],
@@ -68,35 +177,35 @@ class Command(BaseCommand):
                 "estimated_days": 45,
                 "syllabus_structure": [
                     {
-                        "subject": "General Knowledge & SCERT Science",
+                        "subject": "General Knowledge & Current Affairs",
                         "weightage": 50,
                         "modules": [
-                            {"name": "Kerala Facts, Districts & Wildlife", "target_day": 7},
-                            {"name": "SCERT Basic Science (Physics & Chemistry)", "target_day": 14},
-                            {"name": "Indian National Movement", "target_day": 20},
+                            {"name": "Kerala Governance & Revenue System", "target_day": 5},
+                            {"name": "Indian History & Freedom Struggle", "target_day": 12},
+                            {"name": "SCERT Basic Science & IT", "target_day": 20},
                         ]
                     },
                     {
-                        "subject": "Arithmetic & Reasoning",
-                        "weightage": 30,
-                        "modules": [
-                            {"name": "Basic Mathematics & Simplification", "target_day": 27},
-                            {"name": "Ratio, Proportions & Averages", "target_day": 33},
-                        ]
-                    },
-                    {
-                        "subject": "Malayalam & English",
+                        "subject": "Arithmetic & Mental Ability",
                         "weightage": 20,
                         "modules": [
-                            {"name": "Malayalam Usage & Corrections", "target_day": 40},
-                            {"name": "General English Vocabulary", "target_day": 45},
+                            {"name": "Simplification & Ratio Proportion", "target_day": 26},
+                            {"name": "Work & Time, Mensuration", "target_day": 32},
+                        ]
+                    },
+                    {
+                        "subject": "English & Malayalam",
+                        "weightage": 30,
+                        "modules": [
+                            {"name": "General English Grammar", "target_day": 38},
+                            {"name": "Malayalam Vocabulary & Bhashasudhi", "target_day": 45},
                         ]
                     }
                 ],
                 "weekly_milestones": [
-                    {"week": 1, "goal": "Complete SCERT Science & Kerala Geography"},
-                    {"week": 2, "goal": "Finish Freedom Struggle & Arithmetic Basics"},
-                    {"week": 3, "goal": "Complete Reasoning & Malayalam Section"},
+                    {"week": 1, "goal": "Kerala Revenue System & Land Reforms Knowledge"},
+                    {"week": 2, "goal": "SCERT Science & Indian Constitution"},
+                    {"week": 3, "goal": "Arithmetic Practice & English Grammar"},
                     {"week": 4, "goal": "Full Length VFA Mock Tests & PYQs"},
                 ],
                 "mock_test_schedule": [10, 20, 30, 40, 45],
@@ -126,4 +235,4 @@ class Command(BaseCommand):
                 )
                 self.stdout.write(self.style.SUCCESS(f"Saved Master Study Plan for {exam.name}"))
 
-        self.stdout.write(self.style.SUCCESS("Finished seeding master study plans."))
+        self.stdout.write(self.style.SUCCESS("Finished seeding master study plans & exam dates."))
