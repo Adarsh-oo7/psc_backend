@@ -2566,16 +2566,16 @@ class MasterStudyPlanView(views.APIView):
         if not exam:
             return Response({'detail': 'No exam found'}, status=status.HTTP_404_NOT_FOUND)
 
-        plan, _ = MasterStudyPlan.objects.get_or_create(
-            exam=exam,
-            defaults={
-                'title': f"{exam.name} Master Study Roadmap",
-                'description': f"Structured study plan for {exam.name} based on official syllabus.",
-                'estimated_days': 60,
-                'syllabus_structure': [],
-                'weekly_milestones': []
-            }
-        )
+        plan = MasterStudyPlan.objects.filter(exam=exam).first()
+        if not plan:
+            plan = MasterStudyPlan.objects.create(
+                exam=exam,
+                title=f"{exam.name} Master Study Roadmap",
+                description=f"Structured study plan for {exam.name} based on official syllabus.",
+                estimated_days=60,
+                syllabus_structure=[],
+                weekly_milestones=[]
+            )
 
         serializer = MasterStudyPlanSerializer(plan)
         return Response(serializer.data)
