@@ -2,92 +2,92 @@ from django.core.management.base import BaseCommand
 from questionbank.models import Exam, MasterStudyPlan
 
 class Command(BaseCommand):
-    help = "Seed upcoming Kerala PSC exam dates, category numbers, and Master Study Plans"
+    help = "Seed official Kerala PSC exam dates, category numbers, and Master Study Plans"
 
     def handle(self, *args, **options):
-        # 1. Update Exam Category Numbers and Expected Dates
+        # Official KPSC Exam Category Numbers & Scheduled Dates
         upcoming_exams = [
             {
                 "name": "Company Board LGS",
-                "keywords": ["Company Board LGS", "Category 423/2025"],
-                "category_number": "Cat 423/2025",
+                "keywords": ["Company Board LGS", "Category 423"],
+                "category_number": "Cat. No. 423/2023 & 423/2025",
                 "expected_exam_date": "2026-07-18",
                 "year": 2026,
             },
             {
                 "name": "Last Grade Servant (LGS)",
                 "keywords": ["Last Grade Servant", "LGS"],
-                "category_number": "Cat 701/2025",
+                "category_number": "Cat. No. 701/2024",
                 "expected_exam_date": "2026-08-01",
                 "year": 2026,
             },
             {
                 "name": "Lower Division Clerk (LDC)",
                 "keywords": ["Lower Division Clerk", "LDC"],
-                "category_number": "Cat 501/2025",
+                "category_number": "Cat. No. 501/2023 & 502/2023",
                 "expected_exam_date": "2026-08-15",
                 "year": 2026,
             },
             {
                 "name": "Village Field Assistant (VFA)",
                 "keywords": ["Village Field Assistant", "VFA"],
-                "category_number": "Cat 571/2025",
+                "category_number": "Cat. No. 571/2023",
                 "expected_exam_date": "2026-09-19",
                 "year": 2026,
             },
             {
                 "name": "KSEB Electricity Worker",
                 "keywords": ["KSEB Electricity Worker", "KSEB"],
-                "category_number": "Cat 612/2025",
+                "category_number": "Cat. No. 612/2023",
                 "expected_exam_date": "2026-09-05",
                 "year": 2026,
             },
             {
                 "name": "Fire & Rescue Officer",
                 "keywords": ["Fire & Rescue", "Fireman"],
-                "category_number": "Cat 330/2025",
+                "category_number": "Cat. No. 330/2024",
                 "expected_exam_date": "2026-09-26",
                 "year": 2026,
             },
             {
                 "name": "KSRTC Conductor",
                 "keywords": ["KSRTC Conductor", "Conductor"],
-                "category_number": "Cat 410/2025",
+                "category_number": "Cat. No. 410/2024",
                 "expected_exam_date": "2026-10-03",
                 "year": 2026,
             },
             {
-                "name": "Degree Level Preliminary & Mains",
+                "name": "Degree Level Common Preliminary & Mains",
                 "keywords": ["Degree Level", "Degree Level Mains"],
-                "category_number": "Cat 112/2026",
+                "category_number": "Cat. No. 112/2024",
                 "expected_exam_date": "2026-10-10",
                 "year": 2026,
             },
             {
                 "name": "University LGS",
                 "keywords": ["University LGS"],
-                "category_number": "Cat 215/2025",
+                "category_number": "Cat. No. 215/2024",
                 "expected_exam_date": "2026-10-24",
                 "year": 2026,
             },
             {
                 "name": "Secretariat Assistant",
                 "keywords": ["Secretariat Assistant"],
-                "category_number": "Cat 089/2026",
+                "category_number": "Cat. No. 089/2024",
                 "expected_exam_date": "2026-11-07",
                 "year": 2026,
             },
             {
                 "name": "Sub Inspector of Police (SI)",
                 "keywords": ["Sub Inspector", "SI Police"],
-                "category_number": "Cat 045/2026",
+                "category_number": "Cat. No. 045/2024",
                 "expected_exam_date": "2026-11-21",
                 "year": 2026,
             },
             {
                 "name": "Civil Excise Officer (CEO)",
                 "keywords": ["Civil Excise Officer", "Excise Officer"],
-                "category_number": "Cat 198/2025",
+                "category_number": "Cat. No. 198/2024",
                 "expected_exam_date": "2026-12-05",
                 "year": 2026,
             },
@@ -113,7 +113,7 @@ class Command(BaseCommand):
                     exam.save()
                     self.stdout.write(self.style.SUCCESS(f"Updated Exam: {exam.name} ({exam.category_number} - {exam.expected_exam_date})"))
 
-        # 2. Shared Master Study Plans
+        # Shared Master Study Plans
         plans_data = [
             {
                 "exam_keywords": ["Last Grade Servant", "LGS", "Company Board LGS"],
@@ -173,7 +173,7 @@ class Command(BaseCommand):
             {
                 "exam_keywords": ["Village Field Assistant", "VFA"],
                 "title": "Village Field Assistant (VFA) 2026 Target Study Roadmap",
-                "description": "Structured 45-day intensive study roadmap for VFA (Cat 571/2025). Focuses on SCERT science, arithmetic, and Malayalam.",
+                "description": "Structured 45-day intensive study roadmap for VFA (Cat 571/2023). Focuses on SCERT science, arithmetic, and Malayalam.",
                 "estimated_days": 45,
                 "syllabus_structure": [
                     {
@@ -235,4 +235,4 @@ class Command(BaseCommand):
                 )
                 self.stdout.write(self.style.SUCCESS(f"Saved Master Study Plan for {exam.name}"))
 
-        self.stdout.write(self.style.SUCCESS("Finished seeding master study plans & exam dates."))
+        self.stdout.write(self.style.SUCCESS("Finished seeding official master study plans & exam dates."))
