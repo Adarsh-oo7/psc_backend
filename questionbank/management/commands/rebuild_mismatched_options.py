@@ -19,10 +19,24 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("=== Starting AI Mismatched Options Repair Script ==="))
 
         try:
+            import os
             import google.generativeai as genai
-            api_key = getattr(settings, 'GEMINI_API_KEY', None)
+            api_key = os.environ.get('GEMINI_API_KEY') or os.environ.get('GOOGLE_API_KEY') or getattr(settings, 'GEMINI_API_KEY', None)
             if not api_key:
-                self.stdout.write(self.style.ERROR("GEMINI_API_KEY not set in Django settings."))
+                # Try reading /var/www/kpsc-backend/.env
+                env_file = '/var/www/kpsc-backend/.env'
+                if os.path.exists(env_file):
+                    with open(env_file) as f:
+                        for line in f:
+                            if line.startswith('GEMINI_API_KEY='):
+                                api_key = line.split('=', 1)[1].strip().strip('"').strip("'")
+                                break
+                            elif line.startswith('GOOGLE_API_KEY='):
+                                api_key = line.split('=', 1)[1].strip().strip('"').strip("'")
+                                break
+
+            if not api_key:
+                self.stdout.write(self.style.ERROR("GEMINI_API_KEY not found. Please set environment variable."))
                 return
 
             genai.configure(api_key=api_key)
