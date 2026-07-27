@@ -628,21 +628,48 @@ class ExamSyllabusAdmin(admin.ModelAdmin):
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    # Add the new field to the list display
-    list_display = ('user', 'institute', 'is_content_creator')
-    list_filter = ('institute', 'is_content_creator')
-    search_fields = ('user__username', 'institute__name')
-    
-    # Add the field to the form for editing
+    list_display = (
+        'user', 'get_email', 'phone_number', 'is_premium', 
+        'total_xp', 'current_streak', 'institute', 
+        'get_date_joined', 'get_last_login', 'is_content_creator'
+    )
+    list_filter = (
+        'is_premium', 'is_content_creator', 'district', 
+        'institute', 'preferred_language', 'user__date_joined'
+    )
+    search_fields = ('user__username', 'user__email', 'phone_number', 'institute__name')
+    ordering = ('-user__date_joined',)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related('user', 'institute', 'subscription_plan')
+
+    @admin.display(description='Email', ordering='user__email')
+    def get_email(self, obj):
+        return obj.user.email if obj.user and obj.user.email else '—'
+
+    @admin.display(description='Date Joined', ordering='user__date_joined')
+    def get_date_joined(self, obj):
+        return obj.user.date_joined if obj.user else None
+
+    @admin.display(description='Last Login', ordering='user__last_login')
+    def get_last_login(self, obj):
+        return obj.user.last_login if obj.user and obj.user.last_login else None
+
     fieldsets = (
         ('Account Information', {
-            'fields': ('user', 'institute', 'is_content_creator')
+            'fields': ('user', 'phone_number', 'institute', 'is_content_creator', 'is_owner')
+        }),
+        ('Subscription & Status', {
+            'fields': ('is_premium', 'subscription_plan', 'subscription_end_date', 'target_exam_date', 'referral_code', 'referred_by')
+        }),
+        ('Gamification & Activity', {
+            'fields': ('total_xp', 'level', 'current_streak', 'longest_streak', 'last_active_date', 'streak_freeze_count')
         }),
         ('Personal Details', {
-            'fields': ('profile_photo', 'qualifications', 'date_of_birth', 'place','bio')
+            'fields': ('profile_photo', 'qualifications', 'date_of_birth', 'place', 'district', 'bio')
         }),
         ('User Preferences', {
-            'fields': ('preferred_difficulty', 'preferred_topics', 'preferred_exams')
+            'fields': ('preferred_language', 'preferred_difficulty', 'preferred_topics', 'preferred_exams')
         }),
     )
 
@@ -705,21 +732,37 @@ class ReportAdmin(admin.ModelAdmin):
     question_preview.short_description = 'Question'
 
     def question_full_preview(self, obj):
+        import json
         q = obj.question
-        opts = q.options if isinstance(q.options, dict) else {}
-        opts_html = ''.join(
-            f'<div style="padding:4px 0"><strong>{k}.</strong> {v}</div>'
-            for k, v in opts.items()
-        )
+        opts = q.options
+        if isinstance(opts, str):
+            try:
+                opts = json.loads(opts)
+            except Exception:
+                opts = {}
+        if not isinstance(opts, dict):
+            opts = {}
+
+        correct = str(q.correct_answer or '').strip().upper()
+        sorted_opts = sorted(opts.items(), key=lambda x: str(x[0]).upper())
+        opts_html_parts = []
+        for k, v in sorted_opts:
+            key_upper = str(k).upper()
+            is_correct = (key_upper == correct)
+            style = 'padding:6px 10px;margin-bottom:4px;border-radius:6px;background:#dcfce7;color:#14532d;font-weight:700;border:1px solid #86efac' if is_correct else 'padding:6px 10px;margin-bottom:4px;border-radius:6px;background:#ffffff;border:1px solid #e2e8f0'
+            badge = ' &#10003; [Correct Answer]' if is_correct else ''
+            opts_html_parts.append(f'<div style="{style}"><strong>{key_upper}.</strong> {v}{badge}</div>')
+
+        opts_html = ''.join(opts_html_parts)
         return format_html(
-            '<div style="background:#f8f9fa;padding:16px;border-radius:8px;border:1px solid #dee2e6">'
-            '<p style="font-weight:600;margin-bottom:8px">{}</p>'
+            '<div style="background:#f8fafc;padding:16px;border-radius:10px;border:1px solid #cbd5e1;max-width:700px">'
+            '<p style="font-weight:700;font-size:1.05rem;margin-bottom:12px;color:#0f172a">{}</p>'
             '{}'
-            '<p style="margin-top:10px;color:#2E8B57"><strong>Correct Answer: {}</strong></p>'
-            '<p style="color:#666;font-size:0.85rem;margin-top:4px"><em>Explanation: {}</em></p>'
+            '<p style="margin-top:14px;color:#15803d;font-weight:800"><strong>Marked Correct: Option {}</strong></p>'
+            '<p style="color:#334155;font-size:0.9rem;margin-top:6px"><em>Explanation: {}</em></p>'
             '</div>',
-            q.text, format_html(opts_html), q.correct_answer,
-            q.explanation[:200] if q.explanation else '(none)'
+            q.text, format_html(opts_html), correct,
+            q.explanation[:300] if q.explanation else '(none)'
         )
     question_full_preview.short_description = 'Full Question Preview'
 
@@ -778,15 +821,13 @@ Explanation: {q.explanation or '(none)'}
 YOUR TASK:
 Analyze the reported issue and return a corrected, high-quality version of this question.
 
-STRICT RULES:
-1. Question text must be clear, grammatically correct English (or Malayalam if original is Malayalam)
-2. There must be exactly 4 options labeled A, B, C, D — no more, no less
-3. Each option must be concise and unambiguous
-4. The correct_answer must be a single uppercase letter: A, B, C, or D
-5. All 4 options must be factually distinct
-6. The explanation must clearly justify why the correct answer is right and others are wrong
-7. Do NOT change the factual content if it is already correct — only fix formatting/language/typos/options
-8. If the correct answer was wrong, fix it based on factual accuracy
+CRITICAL & STRICT RULES:
+1. PRESERVE ORIGINAL OPTIONS: Retain the original options A, B, C, D as much as possible! Only modify an option if it has typos, bad formatting, duplicate text, or is factually wrong. DO NOT replace original options with unrelated or random choices.
+2. HIGH TOPIC RELEVANCE: All 4 options MUST be strictly relevant, plausible, and belonging to the EXACT same subject category as the question (e.g., if the question is about Kerala History, all options must be relevant Kerala historical figures/places/events).
+3. QUESTION TEXT: Fix any grammatical, spelling, or translation errors in the question text while preserving its core topic and meaning. Keep original language (English or Malayalam).
+4. EXACTLY 4 OPTIONS: Ensure there are exactly 4 distinct options labeled A, B, C, D.
+5. ACCURATE CORRECT ANSWER: Ensure 'correct_answer' is a single uppercase letter ('A', 'B', 'C', or 'D') that points to the genuinely correct option.
+6. CLEAR EXPLANATION: Provide a helpful explanation explaining why the correct option is right and clarifying any confusion mentioned in the user report.
 
 RETURN ONLY THIS JSON (no markdown, no extra text):
 {{
@@ -801,7 +842,7 @@ RETURN ONLY THIS JSON (no markdown, no extra text):
 
         # 1. Try Gemini API Keys and Models
         gemini_keys = [k for k in [os.environ.get('GEMINI_REPORT_API_KEY'), os.environ.get('GEMINI_API_KEY')] if k]
-        gemini_models = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
+        gemini_models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-pro']
 
         for key in gemini_keys:
             if raw_json: break
@@ -840,8 +881,30 @@ RETURN ONLY THIS JSON (no markdown, no extra text):
             except Exception as e:
                 last_error = f"Groq API error: {e}"
 
+        # 3. Fallback to OpenAI API if both Gemini and Groq failed
+        if not raw_json and os.environ.get('OPENAI_API_KEY'):
+            try:
+                openai_key = os.environ.get('OPENAI_API_KEY')
+                url = "https://api.openai.com/v1/chat/completions"
+                headers = {
+                    "Authorization": f"Bearer {openai_key}",
+                    "Content-Type": "application/json"
+                }
+                payload = {
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "response_format": {"type": "json_object"}
+                }
+                res = requests.post(url, json=payload, headers=headers, timeout=20)
+                if res.status_code == 200:
+                    raw_json = res.json()['choices'][0]['message']['content']
+                else:
+                    last_error = f"OpenAI API: HTTP {res.status_code}"
+            except Exception as e:
+                last_error = f"OpenAI API error: {e}"
+
         if not raw_json:
-            raise ValueError(f"Could not generate AI fix. {last_error or 'Please check API keys.'}")
+            raise ValueError(f"Could not generate AI fix. {last_error or 'Please check API keys (GEMINI_API_KEY / GROQ_API_KEY / OPENAI_API_KEY).'}")
 
         # Strip markdown code fences if present
         raw_json = raw_json.strip()
@@ -882,7 +945,7 @@ RETURN ONLY THIS JSON (no markdown, no extra text):
         ai_result = None
         ai_error = None
 
-        if request.method == 'POST' and 'generate_fix' in request.POST:
+        if request.method == 'POST':
             try:
                 ai_result = self._call_gemini_fix(report)
                 # Store in session for apply step
@@ -907,6 +970,69 @@ RETURN ONLY THIS JSON (no markdown, no extra text):
         )
         return render(request, 'admin/questionbank/report/ai_fix.html', context)
 
+    def merge_duplicate_questions(self, existing_q, duplicate_q):
+        """Merges duplicate_q into existing_q, re-pointing all relationships, and deletes duplicate_q."""
+        from django.db import transaction
+        from .models import (
+            UserAnswer, Bookmark, Report, DailyExam, ModelExam, 
+            PreviousYearPaper, SessionAnswer, AIExplanationCache
+        )
+
+        with transaction.atomic():
+            # 1. UserAnswer
+            UserAnswer.objects.filter(question=duplicate_q).update(question=existing_q)
+            
+            # 2. Bookmark
+            for b in Bookmark.objects.filter(question=duplicate_q):
+                if not Bookmark.objects.filter(user=b.user, question=existing_q).exists():
+                    b.question = existing_q
+                    b.save()
+                else:
+                    b.delete()
+
+            # 3. Report
+            Report.objects.filter(question=duplicate_q).update(question=existing_q)
+
+            # 4. DailyExam (ManyToMany)
+            for de in DailyExam.objects.filter(questions=duplicate_q):
+                de.questions.remove(duplicate_q)
+                de.questions.add(existing_q)
+
+            # 5. ModelExam (ManyToMany)
+            for me in ModelExam.objects.filter(questions=duplicate_q):
+                me.questions.remove(duplicate_q)
+                me.questions.add(existing_q)
+
+            # 6. PreviousYearPaper (ManyToMany)
+            for pyp in PreviousYearPaper.objects.filter(questions=duplicate_q):
+                pyp.questions.remove(duplicate_q)
+                pyp.questions.add(existing_q)
+
+            # 7. SessionAnswer (Inline Session Answers)
+            for sa in SessionAnswer.objects.filter(question=duplicate_q):
+                if not SessionAnswer.objects.filter(session=sa.session, question=existing_q).exists():
+                    sa.question = existing_q
+                    sa.save()
+                else:
+                    sa.delete()
+
+            # 8. AIExplanationCache
+            for cache in AIExplanationCache.objects.filter(question=duplicate_q):
+                if not AIExplanationCache.objects.filter(question=existing_q, language=cache.language).exists():
+                    cache.question = existing_q
+                    cache.save()
+                else:
+                    cache.delete()
+
+            # 9. Update stats on existing_q
+            existing_q.times_answered += duplicate_q.times_answered
+            existing_q.times_correct += duplicate_q.times_correct
+            existing_q.times_appeared += duplicate_q.times_appeared
+            existing_q.save()
+
+            # 10. Delete duplicate_q
+            duplicate_q.delete()
+
     def apply_fix_view(self, request, report_id):
         """Apply the AI fix to the actual question."""
         if request.method != 'POST':
@@ -925,23 +1051,50 @@ RETURN ONLY THIS JSON (no markdown, no extra text):
 
         try:
             q = report.question
-            q.text = ai_result['question_text']
-            q.options = ai_result['options']
-            q.correct_answer = ai_result['correct_answer']
-            q.explanation = ai_result['explanation']
-            # Recompute hash on save
-            q.save()
+            
+            # Compute new text hash beforehand to check for duplicates
+            import re, hashlib, json
+            normalized = re.sub(r'[^\w\s]', '', ai_result['question_text']).lower().strip()
+            normalized = re.sub(r'\s+', ' ', normalized)
+            if ai_result['options'] and isinstance(ai_result['options'], dict):
+                opts_str = "|".join(f"{k}:{str(v).lower().strip()}" for k, v in sorted(ai_result['options'].items()))
+                normalized = f"{normalized}||{opts_str}"
+            new_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
 
-            # Delete this report (and all other reports for same question) once fixed
-            Report.objects.filter(question=q).delete()
+            # Check if another question with the exact same hash already exists
+            existing_q = Question.objects.filter(text_hash=new_hash).exclude(pk=q.pk).first()
+
+            if existing_q:
+                # Merge duplicate question (points all answers/bookmarks/exams to existing_q and deletes q)
+                self.merge_duplicate_questions(existing_q, q)
+                
+                # Delete reports pointing to the duplicate question since it was resolved
+                Report.objects.filter(question=existing_q).delete()
+                
+                messages.success(
+                    request,
+                    f'✅ Question #{q.id} was fixed by AI and matched existing Question #{existing_q.id}. '
+                    f'Duplicate question #{q.id} was safely merged and all reports resolved!'
+                )
+            else:
+                # Apply the fix directly
+                q.text = ai_result['question_text']
+                q.options = ai_result['options']
+                q.correct_answer = ai_result['correct_answer']
+                q.explanation = ai_result['explanation']
+                q.save()
+
+                # Delete this report (and all other reports for same question) once fixed
+                Report.objects.filter(question=q).delete()
+
+                messages.success(
+                    request,
+                    f'✅ Question #{q.id} has been fixed by AI and all related reports have been cleared.'
+                )
 
             # Clean up session
             request.session.pop(f'ai_fix_{report_id}', None)
 
-            messages.success(
-                request,
-                f'✅ Question #{q.id} has been fixed by AI and all related reports have been cleared.'
-            )
         except Exception as e:
             messages.error(request, f'Error applying fix: {e}')
             return redirect(f'/admin/questionbank/report/{report_id}/ai-fix/')

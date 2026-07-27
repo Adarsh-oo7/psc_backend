@@ -65,7 +65,11 @@ class RegisterView(generics.CreateAPIView):
             first_name=request.data.get('first_name', ''),
             last_name=request.data.get('last_name', '')
         )
-        UserProfile.objects.create(user=user)
+        profile = UserProfile.objects.create(user=user)
+        phone_number = request.data.get('phone_number')
+        if phone_number:
+            profile.phone_number = phone_number
+            profile.save()
         logger.info(f"User {username} registered successfully.")
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
@@ -2535,5 +2539,138 @@ class UserSearchView(views.APIView):
                 'is_friend': u.id in current_friends
             })
         return Response({'users': users_data})
+
+
+# ===================================================================
+# --- Master Study Plan & User Exam Progress Views ---
+# ===================================================================
+
+class MasterStudyPlanView(views.APIView):
+    """
+    Retrieves the shared Master Study Plan for a specific exam (or student's primary exam).
+    Does NOT invoke AI per request — serves stored DB plan.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, exam_id=None):
+        from .serializers import MasterStudyPlanSerializer
+        exam = None
+        if exam_id:
+            exam = get_object_or_404(Exam, pk=exam_id)
+        elif request.user.is_authenticated and hasattr(request.user, 'userprofile') and request.user.userprofile.primary_exam:
+            exam = request.user.userprofile.primary_exam
+        else:
+            # Fallback to LGS exam if available
+            exam = Exam.objects.filter(name__icontains='LGS').first() or Exam.objects.first()
+
+        if not exam:
+            return Response({'detail': 'No exam found'}, status=status.HTTP_404_NOT_FOUND)
+
+        plan, _ = MasterStudyPlan.objects.get_or_create(
+            exam=exam,
+            defaults={
+                'title': f"{exam.name} Master Study Roadmap",
+                'description': f"Structured study plan for {exam.name} based on official syllabus.",
+                'estimated_days': 60,
+                'syllabus_structure': [],
+                'weekly_milestones': []
+            }
+        )
+
+        serializer = MasterStudyPlanSerializer(plan)
+        return Response(serializer.data)
+
+
+class UserExamProgressView(views.APIView):
+    """
+    Read or update user's topic completion and mock exam progress on an exam roadmap.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, exam_id=None):
+        from .serializers import UserExamProgressSerializer
+        profile = request.user.userprofile
+        target_exam = None
+        if exam_id:
+            target_exam = get_object_or_404(Exam, pk=exam_id)
+        elif profile.primary_exam:
+            target_exam = profile.primary_exam
+        else:
+            target_exam = Exam.objects.filter(name__icontains='LGS').first() or Exam.objects.first()
+
+        if not target_exam:
+            return Response({'detail': 'No active exam target'}, status=status.HTTP_400_BAD_REQUEST)
+
+        progress, _ = UserExamProgress.objects.get_or_create(
+            user=request.user,
+            exam=target_exam
+        )
+
+        serializer = UserExamProgressSerializer(progress)
+        return Response(serializer.data)
+
+    def post(self, request, exam_id=None):
+        from .serializers import UserExamProgressSerializer
+        profile = request.user.userprofile
+        target_exam = None
+        if exam_id:
+            target_exam = get_object_or_404(Exam, pk=exam_id)
+        elif profile.primary_exam:
+            target_exam = profile.primary_exam
+        else:
+            target_exam = Exam.objects.first()
+
+        progress, _ = UserExamProgress.objects.get_or_create(
+            user=request.user,
+            exam=target_exam
+        )
+
+        completed_topic_ids = request.data.get('completed_topic_ids')
+        completed_mock_ids = request.data.get('completed_mock_ids')
+        completed_pyq_ids = request.data.get('completed_pyq_ids')
+        current_topic_id = request.data.get('current_topic_id')
+
+        if completed_topic_ids is not None:
+            progress.completed_topic_ids = completed_topic_ids
+        if completed_mock_ids is not None:
+            progress.completed_mock_ids = completed_mock_ids
+        if completed_pyq_ids is not None:
+            progress.completed_pyq_ids = completed_pyq_ids
+        if current_topic_id:
+            progress.current_topic_id = current_topic_id
+
+        progress.save()
+        serializer = UserExamProgressSerializer(progress)
+        return Response(serializer.data)
+
+
+class SelectPrimaryExamView(views.APIView):
+    """
+    Sets or updates the primary target exam for the authenticated student.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        exam_id = request.data.get('exam_id')
+        if not exam_id:
+            return Response({'error': 'exam_id is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        exam = get_object_or_404(Exam, pk=exam_id)
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        profile.primary_exam = exam
+        phone_number = request.data.get('phone_number')
+        if phone_number:
+            profile.phone_number = phone_number
+        profile.save()
+
+        return Response({
+            'success': True,
+            'primary_exam': {
+                'id': exam.id,
+                'name': exam.name,
+                'year': exam.year
+            }
+        })
+
 
 

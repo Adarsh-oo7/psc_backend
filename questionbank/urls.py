@@ -90,4 +90,11 @@ urlpatterns = [
     path('practice/<int:session_id>/submit/', views.PracticeSubmitView.as_view(), name='practice-submit'),
     path('analytics/weak-areas/', views.WeakAreasView.as_view(), name='weak-areas'),
     path('analytics/topic-summary/', views.TopicSummaryView.as_view(), name='topic-summary'),
+
+    # --- Master Study Plan & Primary Exam URLs ---
+    path('master-study-plan/', views.MasterStudyPlanView.as_view(), name='master-study-plan-default'),
+    path('master-study-plan/<int:exam_id>/', views.MasterStudyPlanView.as_view(), name='master-study-plan-detail'),
+    path('my-exam-progress/', views.UserExamProgressView.as_view(), name='my-exam-progress-default'),
+    path('my-exam-progress/<int:exam_id>/', views.UserExamProgressView.as_view(), name='my-exam-progress-detail'),
+    path('onboarding/select-exam/', views.SelectPrimaryExamView.as_view(), name='select-primary-exam'),
 ]

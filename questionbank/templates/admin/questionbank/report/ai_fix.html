@@ -118,7 +118,7 @@
   </div>
 
   <!-- Generate Button -->
-  <form method="POST" style="margin-top:10px">
+  <form method="POST" style="margin-top:10px" onsubmit="const b=document.getElementById('generateBtn'); b.innerHTML='<span class=spinner></span>Calling AI Fix&hellip;'; setTimeout(function(){ b.disabled=true; }, 50);">
     {% csrf_token %}
     <button
       type="submit"
@@ -126,12 +126,11 @@
       value="1"
       class="btn-generate"
       id="generateBtn"
-      onclick="document.getElementById('generateBtn').innerHTML='<span class=spinner></span>Calling Gemini AI&hellip;'; document.getElementById('generateBtn').disabled=true;"
     >
       &#x1F916; {% if ai_result %}Re-generate AI Fix{% else %}Generate AI Fix{% endif %}
     </button>
     <span style="color:#94a3b8; font-size:0.8rem; margin-left:12px">
-      Uses GEMINI_REPORT_API_KEY &mdash; takes ~5 seconds
+      Uses GEMINI_REPORT_API_KEY / GEMINI_API_KEY &mdash; takes ~5 seconds
     </span>
   </form>
 </div>

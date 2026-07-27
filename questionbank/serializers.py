@@ -5,7 +5,8 @@ from django.db.models import Sum
 # --- Local application models ---
 from .models import (
     ExamCategory, Exam, Topic, Question, Bookmark, Report, 
-    UserProfile, UserAnswer, ExamSyllabus, CurrentAffairs
+    UserProfile, UserAnswer, ExamSyllabus, CurrentAffairs,
+    MasterStudyPlan, UserExamProgress
 )
 # --- Cross-application models ---
 from institutes.models import Institute
@@ -17,7 +18,7 @@ from institutes.models import Institute
 class ExamSerializer(serializers.ModelSerializer):
     class Meta:
         model = Exam
-        fields = ['id', 'name', 'slug', 'year', 'duration_minutes']
+        fields = ['id', 'name', 'slug', 'year', 'duration_minutes', 'category_number', 'expected_exam_date']
 
 class ExamCategorySerializer(serializers.ModelSerializer):
     exams = ExamSerializer(many=True, read_only=True)
@@ -31,15 +32,32 @@ class TopicSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'institute', 'image']
 
 class QuestionSerializer(serializers.ModelSerializer):
-    # CORRECTED: This now includes all the new fields for a question
     exams = ExamSerializer(many=True, read_only=True)
     topic = TopicSerializer(read_only=True)
+    options = serializers.SerializerMethodField()
+    correct_answer = serializers.SerializerMethodField()
+
     class Meta:
         model = Question
         fields = [
             'id', 'text', 'options', 'correct_answer', 'explanation', 
             'difficulty', 'institute', 'topic', 'sub_topic', 'exams'
         ]
+
+    def get_options(self, obj):
+        opts = obj.options
+        if isinstance(opts, str):
+            try:
+                import json
+                opts = json.loads(opts)
+            except Exception:
+                opts = {}
+        if isinstance(opts, dict):
+            return {str(k).upper(): str(v) for k, v in sorted(opts.items(), key=lambda x: str(x[0]).upper())}
+        return opts
+
+    def get_correct_answer(self, obj):
+        return str(obj.correct_answer or '').strip().upper()
 
 class BookmarkSerializer(serializers.ModelSerializer):
     class Meta:
@@ -91,6 +109,10 @@ class UserProfileSerializer(serializers.ModelSerializer):
     fee_status = serializers.SerializerMethodField()
     preferred_topics = TopicSerializer(many=True, read_only=True)
     preferred_exams = ExamSerializer(many=True, read_only=True)
+    primary_exam_detail = ExamSerializer(source='primary_exam', read_only=True)
+    primary_exam_id = serializers.PrimaryKeyRelatedField(
+        queryset=Exam.objects.all(), source='primary_exam', write_only=True, required=False, allow_null=True
+    )
 
     # --- These fields are for WRITING data from the app to the backend ---
     
@@ -108,12 +130,12 @@ class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserProfile
         fields = [
-            'id', 'user', 'institute', 'profile_photo', 'profile_photo_upload', 
+            'id', 'user', 'phone_number', 'institute', 'profile_photo', 'profile_photo_upload', 
             'qualifications', 'date_of_birth', 'place', 'district', 'district_display', 'preferred_difficulty',
             'preferred_language', 'is_owner', 'join_request_status', 'fee_status', 
             'preferred_topics', 'preferred_topics_ids',
 
-            'preferred_exams', 'preferred_exams_ids', 'bio',
+            'preferred_exams', 'preferred_exams_ids', 'primary_exam_detail', 'primary_exam_id', 'bio',
             'is_content_creator', 'total_xp', 'level', 'current_streak', 
             'longest_streak', 'last_active_date', 'streak_freeze_count'
         ]
@@ -645,6 +667,35 @@ class UserSubmissionSerializer(serializers.ModelSerializer):
         return obj.options.get('C', '')
     def get_option_d(self, obj):
         return obj.options.get('D', '')
+
+
+class MasterStudyPlanSerializer(serializers.ModelSerializer):
+    exam_name = serializers.CharField(source='exam.name', read_only=True)
+    exam_id = serializers.IntegerField(source='exam.id', read_only=True)
+
+    class Meta:
+        model = MasterStudyPlan
+        fields = [
+            'id', 'exam_id', 'exam_name', 'title', 'description', 
+            'estimated_days', 'syllabus_structure', 'weekly_milestones', 
+            'mock_test_schedule', 'revision_schedule', 'pyq_schedule', 
+            'updated_at'
+        ]
+
+
+class UserExamProgressSerializer(serializers.ModelSerializer):
+    exam_name = serializers.CharField(source='exam.name', read_only=True)
+    current_topic_name = serializers.CharField(source='current_topic.name', read_only=True)
+
+    class Meta:
+        model = UserExamProgress
+        fields = [
+            'id', 'user', 'exam', 'exam_name', 'completed_topic_ids', 
+            'completed_mock_ids', 'completed_pyq_ids', 'current_topic', 
+            'current_topic_name', 'last_studied'
+        ]
+        read_only_fields = ['user', 'last_studied']
+
 
 
 

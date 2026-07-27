@@ -63,10 +63,10 @@ class QuestionForm(forms.ModelForm):
                 except Exception:
                     opts = {}
             if isinstance(opts, dict):
-                self.initial['option_a'] = opts.get('A', '')
-                self.initial['option_b'] = opts.get('B', '')
-                self.initial['option_c'] = opts.get('C', '')
-                self.initial['option_d'] = opts.get('D', '')
+                self.initial['option_a'] = opts.get('A') if 'A' in opts else opts.get('a', '')
+                self.initial['option_b'] = opts.get('B') if 'B' in opts else opts.get('b', '')
+                self.initial['option_c'] = opts.get('C') if 'C' in opts else opts.get('c', '')
+                self.initial['option_d'] = opts.get('D') if 'D' in opts else opts.get('d', '')
         
         # Override correct_answer to be a ChoiceField selector
         self.fields['correct_answer'] = forms.ChoiceField(

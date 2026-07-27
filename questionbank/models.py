@@ -24,6 +24,8 @@ class Exam(models.Model):
     slug = models.SlugField(max_length=150, null=True, blank=True, unique=True)
     year = models.IntegerField()
     duration_minutes = models.PositiveIntegerField(default=75, help_text="Exam duration in minutes")
+    category_number = models.CharField(max_length=50, blank=True, help_text="e.g. Cat 423/2025")
+    expected_exam_date = models.DateField(null=True, blank=True, help_text="Expected / scheduled exam date")
 
     def __str__(self):
         return f"{self.name} ({self.year})"
@@ -118,8 +120,26 @@ class Question(models.Model):
     def save(self, *args, **kwargs):
         import re
         import hashlib
+        import json
         from django.utils.text import slugify
         import uuid
+
+        # Normalize options dict keys to uppercase A, B, C, D
+        if self.options:
+            if isinstance(self.options, str):
+                try:
+                    self.options = json.loads(self.options)
+                except Exception:
+                    self.options = {}
+            if isinstance(self.options, dict):
+                norm_opts = {}
+                for k, v in self.options.items():
+                    norm_opts[str(k).upper()] = str(v)
+                self.options = norm_opts
+
+        # Normalize correct_answer to uppercase
+        if self.correct_answer:
+            self.correct_answer = str(self.correct_answer).strip().upper()
 
         # Normalize text: lowercase, remove punctuation, strip
         normalized = re.sub(r'[^\w\s]', '', self.text).lower().strip()
@@ -173,6 +193,7 @@ class UserProfile(models.Model):
     ]
 
     user = models.OneToOneField(User, on_delete=models.CASCADE)
+    phone_number = models.CharField(max_length=20, blank=True, help_text="User's WhatsApp / Contact phone number")
     profile_photo = models.ImageField(upload_to='profiles/', blank=True, null=True)
     qualifications = models.CharField(max_length=255, blank=True)
     date_of_birth = models.DateField(blank=True, null=True)
@@ -184,7 +205,8 @@ class UserProfile(models.Model):
     institute = models.ForeignKey('institutes.Institute', on_delete=models.SET_NULL, null=True, blank=True, related_name='members')
     is_content_creator = models.BooleanField(default=False, help_text="Designates this user as a trusted community content creator.")
 
-    # --- NEW: Field to store multiple preferred exams ---
+    # --- NEW: Primary Target Exam for Exam-First Dashboard ---
+    primary_exam = models.ForeignKey('Exam', on_delete=models.SET_NULL, null=True, blank=True, related_name='primary_students', help_text="Student's main primary target exam")
     preferred_exams = models.ManyToManyField('Exam', blank=True, related_name='followers')
     preferred_language = models.CharField(
         max_length=5, 
@@ -526,4 +548,49 @@ class SessionAnswer(models.Model):
         unique_together = ('session', 'question')
 
     def __str__(self):
-        return f"{self.session.id} | {self.question.id} | {self.is_correct}"
+        return f"{self.session.id} | {self.question.id} | {self.is_correct}"
+
+
+# ===================================================================
+# --- Shared Master Study Plan & User Progress Models ---
+# ===================================================================
+
+class MasterStudyPlan(models.Model):
+    """
+    Reusable, master study plan for a specific Exam.
+    Created once per Exam (LGS, VFA, LDC, etc.) and shared across all students.
+    """
+    exam = models.OneToOneField(Exam, on_delete=models.CASCADE, related_name='master_study_plan')
+    title = models.CharField(max_length=255, help_text="e.g. LGS 2026 Master Coaching Roadmap")
+    description = models.TextField(blank=True)
+    estimated_days = models.PositiveIntegerField(default=60, help_text="Total target days to complete roadmap")
+    syllabus_structure = models.JSONField(default=list, help_text="Ordered list of subjects, modules, topics with target days")
+    weekly_milestones = models.JSONField(default=list, help_text="Week-by-week goals and focus areas")
+    mock_test_schedule = models.JSONField(default=list, help_text="Milestone points for taking full mock exams")
+    revision_schedule = models.JSONField(default=list, help_text="Spaced repetition revision checkpoints")
+    pyq_schedule = models.JSONField(default=list, help_text="Schedule for solving past paper sets")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Master Study Plan for {self.exam.name}"
+
+
+class UserExamProgress(models.Model):
+    """
+    Tracks an individual student's completion progress against an Exam's Master Study Plan.
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exam_progresses')
+    exam = models.ForeignKey(Exam, on_delete=models.CASCADE, related_name='student_progresses')
+    completed_topic_ids = models.JSONField(default=list, help_text="List of Topic IDs completed by user")
+    completed_mock_ids = models.JSONField(default=list, help_text="List of ModelExam IDs completed")
+    completed_pyq_ids = models.JSONField(default=list, help_text="List of PreviousYearPaper IDs completed")
+    current_topic = models.ForeignKey(Topic, on_delete=models.SET_NULL, null=True, blank=True)
+    last_studied = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'exam')
+
+    def __str__(self):
+        return f"{self.user.username} progress on {self.exam.name}"
+
