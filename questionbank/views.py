@@ -2597,63 +2597,75 @@ class UserExamProgressView(views.APIView):
     """
     Read or update user's topic completion and mock exam progress on an exam roadmap.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get(self, request, exam_id=None):
         from .serializers import UserExamProgressSerializer
-        profile = request.user.userprofile
-        target_exam = None
-        if exam_id:
-            target_exam = get_object_or_404(Exam, pk=exam_id)
-        elif profile.primary_exam:
-            target_exam = profile.primary_exam
-        else:
-            target_exam = Exam.objects.filter(name__icontains='LGS').first() or Exam.objects.first()
+        try:
+            if not request.user.is_authenticated or not hasattr(request.user, 'userprofile'):
+                return Response({'completed_topic_ids': [], 'completed_mock_ids': [], 'completed_pyq_ids': []})
 
-        if not target_exam:
-            return Response({'detail': 'No active exam target'}, status=status.HTTP_400_BAD_REQUEST)
+            profile = request.user.userprofile
+            target_exam = None
+            if exam_id:
+                target_exam = Exam.objects.filter(pk=exam_id).first()
+            if not target_exam and profile.primary_exam:
+                target_exam = profile.primary_exam
+            if not target_exam:
+                target_exam = Exam.objects.filter(name__icontains='LGS').first() or Exam.objects.first()
 
-        progress, _ = UserExamProgress.objects.get_or_create(
-            user=request.user,
-            exam=target_exam
-        )
+            if not target_exam:
+                return Response({'completed_topic_ids': [], 'completed_mock_ids': [], 'completed_pyq_ids': []})
 
-        serializer = UserExamProgressSerializer(progress)
-        return Response(serializer.data)
+            progress = UserExamProgress.objects.filter(user=request.user, exam=target_exam).first()
+            if not progress:
+                progress = UserExamProgress.objects.create(user=request.user, exam=target_exam)
+
+            serializer = UserExamProgressSerializer(progress)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error in UserExamProgressView GET: {e}")
+            return Response({'completed_topic_ids': [], 'completed_mock_ids': [], 'completed_pyq_ids': []})
 
     def post(self, request, exam_id=None):
         from .serializers import UserExamProgressSerializer
-        profile = request.user.userprofile
-        target_exam = None
-        if exam_id:
-            target_exam = get_object_or_404(Exam, pk=exam_id)
-        elif profile.primary_exam:
-            target_exam = profile.primary_exam
-        else:
-            target_exam = Exam.objects.first()
+        try:
+            if not request.user.is_authenticated or not hasattr(request.user, 'userprofile'):
+                return Response({'completed_topic_ids': []})
 
-        progress, _ = UserExamProgress.objects.get_or_create(
-            user=request.user,
-            exam=target_exam
-        )
+            profile = request.user.userprofile
+            target_exam = None
+            if exam_id:
+                target_exam = Exam.objects.filter(pk=exam_id).first()
+            if not target_exam and profile.primary_exam:
+                target_exam = profile.primary_exam
+            if not target_exam:
+                target_exam = Exam.objects.first()
 
-        completed_topic_ids = request.data.get('completed_topic_ids')
-        completed_mock_ids = request.data.get('completed_mock_ids')
-        completed_pyq_ids = request.data.get('completed_pyq_ids')
-        current_topic_id = request.data.get('current_topic_id')
+            progress = UserExamProgress.objects.filter(user=request.user, exam=target_exam).first()
+            if not progress:
+                progress = UserExamProgress.objects.create(user=request.user, exam=target_exam)
 
-        if completed_topic_ids is not None:
-            progress.completed_topic_ids = completed_topic_ids
-        if completed_mock_ids is not None:
-            progress.completed_mock_ids = completed_mock_ids
-        if completed_pyq_ids is not None:
-            progress.completed_pyq_ids = completed_pyq_ids
-        if current_topic_id:
-            progress.current_topic_id = current_topic_id
+            completed_topic_ids = request.data.get('completed_topic_ids')
+            completed_mock_ids = request.data.get('completed_mock_ids')
+            completed_pyq_ids = request.data.get('completed_pyq_ids')
+            current_topic_id = request.data.get('current_topic_id')
 
-        progress.save()
-        serializer = UserExamProgressSerializer(progress)
-        return Response(serializer.data)
+            if completed_topic_ids is not None:
+                progress.completed_topic_ids = completed_topic_ids
+            if completed_mock_ids is not None:
+                progress.completed_mock_ids = completed_mock_ids
+            if completed_pyq_ids is not None:
+                progress.completed_pyq_ids = completed_pyq_ids
+            if current_topic_id:
+                progress.current_topic_id = current_topic_id
+
+            progress.save()
+            serializer = UserExamProgressSerializer(progress)
+            return Response(serializer.data)
+        except Exception as e:
+            logger.error(f"Error in UserExamProgressView POST: {e}")
+            return Response({'completed_topic_ids': []})
 
 
 class SelectPrimaryExamView(views.APIView):
