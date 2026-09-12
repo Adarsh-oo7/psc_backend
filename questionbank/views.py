@@ -251,6 +251,10 @@ class QuestionListView(generics.ListAPIView):
         if language:
             filters['language'] = language
 
+        section = self.request.query_params.get('section')
+        if section:
+            filters['section'] = section
+
         limit = self.request.query_params.get('limit')
         limit_val = int(limit) if limit and limit.isdigit() else None
 
@@ -446,7 +450,7 @@ class GenerateMockExamView(views.APIView):
         shuffle(all_questions)
         response_data = {
             'exam_name': exam.name, 'duration_minutes': exam.duration_minutes,
-            'questions': QuestionMockSerializer(all_questions, many=True).data
+            'questions': QuestionMockSerializer(all_questions, many=True, context={'request': request, 'shuffle': False}).data
         }
         return Response(response_data)
 
@@ -459,20 +463,65 @@ class SubmitAnswerView(generics.CreateAPIView):
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        
+
+        from .kpsc_format import grade_selected_option, present_mcq, LETTERS, selected_to_canonical
+
         question = serializer.validated_data['question']
-        selected_option = serializer.validated_data['selected_option']
-        is_correct = (selected_option == question.correct_answer)
-        
-        serializer.save(user=request.user, is_correct=is_correct)
-        
-        # Award XP and update streak
+        selected_option = str(serializer.validated_data.get('selected_option') or '').strip().upper()
+        if selected_option not in LETTERS:
+            selected_option = 'S'
+
+        salt = UserAnswer.objects.filter(user=request.user, question=question).count()
+        had_wrong = UserAnswer.objects.filter(
+            user=request.user, question=question, is_correct=False
+        ).exists()
+        is_correct, displayed = grade_selected_option(
+            selected_option,
+            question.options,
+            question.correct_answer,
+            user_id=request.user.id,
+            question_id=question.id,
+            salt=salt,
+            shuffle=True,
+        )
+        stored_letter = selected_to_canonical(
+            selected_option,
+            question.options,
+            question.correct_answer,
+            user_id=request.user.id,
+            question_id=question.id,
+            salt=salt,
+            shuffle=True,
+        )
+
+        serializer.save(user=request.user, selected_option=stored_letter[:1], is_correct=is_correct)
+
         from questionbank.gamification import award_xp, update_streak
         xp_earned = 10 if is_correct else 2
+        if is_correct and had_wrong:
+            xp_earned = 18
         _, level_up, new_level = award_xp(request.user, xp_earned)
         current_streak, longest_streak, freeze_used, streak_promo_awarded = update_streak(request.user)
-        
+
         response_data = serializer.data
+        response_data['is_correct'] = is_correct
+        response_data['correct_answer'] = displayed
+        response_data['will_reask'] = not is_correct
+        if not is_correct:
+            retry = present_mcq(
+                question.text,
+                question.options,
+                question.correct_answer,
+                question.explanation or '',
+                user_id=request.user.id,
+                question_id=question.id,
+                salt=salt + 1,
+                shuffle=True,
+                extra={'question_id': question.id},
+            )
+            retry['question_text'] = retry['text']
+            response_data['retry'] = retry
+
         response_data['gamification'] = {
             'xp_earned': xp_earned,
             'level_up': level_up,
@@ -495,40 +544,84 @@ class SubmitExamView(views.APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
+        from .kpsc_format import grade_selected_option, selected_to_canonical
+
         answers_data = request.data.get('answers', {})
         all_question_ids = request.data.get('question_ids', [])
+        shuffle_flag = request.data.get('shuffle', True)
+        if isinstance(shuffle_flag, str):
+            shuffle_flag = shuffle_flag.strip().lower() not in ('0', 'false', 'no', 'off')
 
         if not all_question_ids:
             raise ValidationError("A list of question IDs is required from the frontend.")
 
         questions = Question.objects.filter(id__in=all_question_ids)
         questions_map = {str(q.id): q for q in questions}
-        
+        attempt_counts = dict(
+            UserAnswer.objects.filter(user=request.user, question_id__in=all_question_ids)
+            .values('question_id')
+            .annotate(c=Count('id'))
+            .values_list('question_id', 'c')
+        )
+
         user_answers_to_create = []
         correct_count = 0
         wrong_count = 0
 
         for q_id, selected_ans in answers_data.items():
             question = questions_map.get(str(q_id))
-            if not question: continue
+            if not question:
+                continue
 
-            is_correct = (selected_ans == question.correct_answer)
+            salt = int(attempt_counts.get(question.id, 0) or 0)
+            is_correct, _displayed = grade_selected_option(
+                selected_ans,
+                question.options,
+                question.correct_answer,
+                user_id=request.user.id,
+                question_id=question.id,
+                salt=salt,
+                shuffle=bool(shuffle_flag),
+            )
             if is_correct:
                 correct_count += 1
             else:
                 wrong_count += 1
-            
+
+            selected_letter = selected_to_canonical(
+                selected_ans,
+                question.options,
+                question.correct_answer,
+                user_id=request.user.id,
+                question_id=question.id,
+                salt=salt,
+                shuffle=bool(shuffle_flag),
+            )
             user_answers_to_create.append(
-                UserAnswer(user=request.user, question=question, selected_option=selected_ans, is_correct=is_correct)
+                UserAnswer(
+                    user=request.user,
+                    question=question,
+                    selected_option=selected_letter[:1] or 'S',
+                    is_correct=is_correct,
+                )
             )
 
+        review_questions = QuestionSerializer(
+            questions,
+            many=True,
+            context={
+                'request': request,
+                'shuffle': bool(shuffle_flag),
+                'attempt_counts': attempt_counts,
+            },
+        ).data
+
         UserAnswer.objects.bulk_create(user_answers_to_create, ignore_conflicts=True)
-        
+
         total_answered = len(answers_data)
         unanswered_count = len(all_question_ids) - total_answered
         final_score = (correct_count * 1) - (wrong_count * 0.33)
 
-        # Award XP and update streak
         from questionbank.gamification import award_xp, update_streak
         xp_earned = (correct_count * 10) + (wrong_count * 2) + 50
         _, level_up, new_level = award_xp(request.user, xp_earned)
@@ -542,7 +635,7 @@ class SubmitExamView(views.APIView):
                 'wrong': wrong_count,
                 'unanswered': unanswered_count,
             },
-            'questions': QuestionSerializer(questions, many=True).data,
+            'questions': review_questions,
             'gamification': {
                 'xp_earned': xp_earned,
                 'level_up': level_up,
@@ -708,7 +801,8 @@ class MyProgressDashboardView(views.APIView):
         # --- 1. Calculate Performance by Topic ---
         topic_performance = answers_to_process.values(
             'question__topic__name', 
-            'question__topic__id'
+            'question__topic__id',
+            'question__topic__slug',
         ).annotate(
             total=Count('id'),
             correct=Count(Case(When(is_correct=True, then=1)))
@@ -717,6 +811,23 @@ class MyProgressDashboardView(views.APIView):
             accuracy=Cast('correct', FloatField()) * 100.0 / F('total'),
             marks_lost=(F('wrong') * 1.33)
         )
+
+        weakest_rows = list(topic_performance.filter(wrong__gt=0).order_by('-marks_lost')[:3])
+        strongest_rows = list(topic_performance.order_by('-accuracy')[:3])
+
+        def _topic_card(row):
+            return {
+                'id': row.get('question__topic__id'),
+                'name': row.get('question__topic__name'),
+                'slug': row.get('question__topic__slug'),
+                'accuracy': round(row.get('accuracy') or 0, 1),
+                'question__topic__id': row.get('question__topic__id'),
+                'question__topic__name': row.get('question__topic__name'),
+                'total': row.get('total'),
+                'correct': row.get('correct'),
+                'wrong': row.get('wrong'),
+                'marks_lost': row.get('marks_lost'),
+            }
 
         # --- 2. Calculate Performance by Exam ---
         exam_performance = answers_to_process.values(
@@ -760,8 +871,8 @@ class MyProgressDashboardView(views.APIView):
             },
             'topic_performance': list(topic_performance.order_by('-accuracy')),
             'exam_performance': list(exam_performance.order_by('-accuracy')),
-            'strongest_topics': list(topic_performance.order_by('-accuracy')[:3]),
-            'weakest_topics': list(topic_performance.filter(wrong__gt=0).order_by('-marks_lost')[:3]),
+            'strongest_topics': [_topic_card(row) for row in strongest_rows],
+            'weakest_topics': [_topic_card(row) for row in weakest_rows],
             'answer_history': DetailedUserAnswerSerializer(recent_answers, many=True).data,
             'heatmap_data': heatmap_data,
             'badges': badges
@@ -1545,7 +1656,7 @@ class PublicQuestionDetailView(generics.RetrieveAPIView):
     """
     Public SEO endpoint to fetch a single question by its unique slug.
     """
-    queryset = Question.objects.all()
+    queryset = Question.objects.filter(status='approved', is_public=True)
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
     lookup_field = 'slug'
@@ -1598,15 +1709,23 @@ def seed_feed_cards():
             if q_id:
                 existing_q_ids.append(q_id)
                 
-    questions = Question.objects.exclude(id__in=existing_q_ids).order_by('?')[:15]
+    from questionbank.kpsc_format import format_question_payload, is_servable
+    questions = Question.objects.filter(
+        status='approved', is_public=True
+    ).exclude(id__in=existing_q_ids).order_by('?')[:40]
+    added = 0
     for q in questions:
-        content = {
-            'question_id': q.id,
-            'question_text': q.text,
-            'options': q.options,
-            'correct_answer': q.correct_answer,
-            'explanation': q.explanation
-        }
+        if added >= 15:
+            break
+        if not is_servable(q.text, q.options, q.correct_answer):
+            continue
+        payload = format_question_payload(
+            q.text, q.options, q.correct_answer, q.explanation or '',
+            extra={'question_id': q.id},
+        )
+        payload['question_text'] = payload['text']
+        content = payload
+        added += 1
         StudyFeedCard.objects.create(
             card_type='question',
             title=f"Question on {q.topic.name if q.topic else 'General'}",
@@ -1697,27 +1816,76 @@ class StudyFeedView(views.APIView):
         if not available_cards:
             available_cards = list(StudyFeedCard.objects.order_by('?')[:10])
             
+        serializer_context = {'request': request}
+        final_cards = [StudyFeedCardSerializer(card, context=serializer_context).data for card in available_cards]
+
+        # Re-ask questions this user got wrong, shuffled into a new option order
+        from .engine import QuestionEngine
+        from .kpsc_format import present_mcq, interleave_reviews
+        review_pool = Question.objects.filter(status='approved', is_public=True, institute__isnull=True)
+        review_ids = QuestionEngine.get_due_review_ids(request.user, review_pool, 2)
+        review_cards = []
+        if review_ids:
+            attempt_counts = dict(
+                UserAnswer.objects.filter(user=request.user, question_id__in=review_ids)
+                .values('question_id')
+                .annotate(c=Count('id'))
+                .values_list('question_id', 'c')
+            )
+            for q in Question.objects.filter(id__in=review_ids):
+                payload = present_mcq(
+                    q.text,
+                    q.options,
+                    q.correct_answer,
+                    q.explanation or '',
+                    user_id=request.user.id,
+                    question_id=q.id,
+                    salt=int(attempt_counts.get(q.id, 0) or 0),
+                    shuffle=True,
+                    extra={'question_id': q.id},
+                )
+                payload['question_text'] = payload['text']
+                review_cards.append({
+                    'id': f'review-{q.id}',
+                    'card_type': 'question',
+                    'title': 'Try this again',
+                    'content_data': payload,
+                    'psc_likelihood_tag': '🔁',
+                })
+        if review_cards:
+            final_cards = interleave_reviews(final_cards, review_cards)
+
         # 5. Inject Quiz Card every 5 cards
-        final_cards = []
-        for i, card in enumerate(available_cards):
-            final_cards.append(StudyFeedCardSerializer(card).data)
+        injected = []
+        for i, card in enumerate(final_cards):
+            injected.append(card)
             if (i + 1) % 5 == 0:
-                random_q = Question.objects.all().order_by('?').first()
+                random_q = Question.objects.filter(
+                    status='approved', is_public=True, institute__isnull=True
+                ).order_by('?').first()
                 if random_q:
-                    final_cards.append({
+                    salt = UserAnswer.objects.filter(user=request.user, question=random_q).count()
+                    payload = present_mcq(
+                        random_q.text,
+                        random_q.options,
+                        random_q.correct_answer,
+                        random_q.explanation or '',
+                        user_id=request.user.id,
+                        question_id=random_q.id,
+                        salt=salt,
+                        shuffle=True,
+                        extra={'question_id': random_q.id},
+                    )
+                    payload['question_text'] = payload['text']
+                    injected.append({
                         'id': f"quiz-injected-{random_q.id}",
                         'card_type': 'question',
                         'title': "Quick Knowledge Check!",
-                        'content_data': {
-                            'question_id': random_q.id,
-                            'question_text': random_q.text,
-                            'options': random_q.options,
-                            'correct_answer': random_q.correct_answer,
-                            'explanation': random_q.explanation
-                        },
+                        'content_data': payload,
                         'psc_likelihood_tag': '🔥'
                     })
-                    
+        final_cards = injected
+
         return Response({
             'limit_exceeded': False,
             'views_today': today_views,
@@ -2164,6 +2332,9 @@ class PracticeStartView(generics.CreateAPIView):
             language = request.data.get('language')
             if language:
                 filters['language'] = language
+            section = request.data.get('section')
+            if section:
+                filters['section'] = section
 
             questions_queryset = QuestionEngine.get_questions_for_user(user, filters, limit=count)
 
@@ -2217,8 +2388,27 @@ class PracticeSubmitView(views.APIView):
             question = questions_map.get(q_id)
             if not question:
                 continue
-                
-            is_correct = (selected == question.correct_answer) if selected else False
+
+            salt = UserAnswer.objects.filter(user=request.user, question=question).count()
+            from .kpsc_format import grade_selected_option, selected_to_canonical
+            is_correct, _displayed = grade_selected_option(
+                selected,
+                question.options,
+                question.correct_answer,
+                user_id=request.user.id,
+                question_id=question.id,
+                salt=salt,
+                shuffle=True,
+            ) if selected else (False, '')
+            stored_letter = selected_to_canonical(
+                selected,
+                question.options,
+                question.correct_answer,
+                user_id=request.user.id,
+                question_id=question.id,
+                salt=salt,
+                shuffle=True,
+            ) if selected else ''
             if is_correct:
                 correct_count += 1
                 
@@ -2226,7 +2416,7 @@ class PracticeSubmitView(views.APIView):
                 session=session,
                 question=question,
                 defaults={
-                    'selected_option': selected,
+                    'selected_option': stored_letter,
                     'is_correct': is_correct,
                     'time_spent_secs': time_spent
                 }
@@ -2236,12 +2426,15 @@ class PracticeSubmitView(views.APIView):
                 UserAnswer.objects.create(
                     user=request.user,
                     question=question,
-                    selected_option=selected,
+                    selected_option=stored_letter[:1] or 'S',
                     is_correct=is_correct
                 )
                 
             results_list.append({
-                'question': QuestionResultSerializer(question, context={'request': request}).data,
+                'question': QuestionResultSerializer(
+                    question,
+                    context={'request': request, 'attempt_counts': {question.id: salt}},
+                ).data,
                 'selected_option': selected,
                 'is_correct': is_correct
             })
@@ -2286,6 +2479,103 @@ class WeakAreasView(generics.ListAPIView):
                     'hard_accuracy': calc(tp.hard_attempted, tp.hard_correct),
                 })
         return Response(weak_areas)
+
+
+class SyllabusSectionsView(views.APIView):
+    """Official PSC paper sections for the student's exam, with weak-area focus."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from .psc_sections import (
+            assign_topic_to_exam_section, exam_blueprint, section_meta, user_exam,
+        )
+        from .models import TopicProgress
+
+        exam = user_exam(request.user)
+        exam_id = request.query_params.get('exam_id')
+        if exam_id and str(exam_id).isdigit():
+            exam = Exam.objects.filter(id=int(exam_id)).first() or exam
+        blueprint = exam_blueprint(exam)
+
+        topics = list(Topic.objects.filter(institute__isnull=True).only('id', 'name', 'slug'))
+        progress_map = {
+            tp.topic_id: tp
+            for tp in TopicProgress.objects.filter(user=request.user).select_related('topic')
+        }
+        public_counts = dict(
+            Question.objects.filter(status='approved', is_public=True, institute__isnull=True)
+            .values('topic_id')
+            .annotate(c=Count('id'))
+            .values_list('topic_id', 'c')
+        )
+
+        grouped = {row['topic']: [] for row in blueprint['syllabus']}
+        for topic in topics:
+            assigned = assign_topic_to_exam_section(topic.name, blueprint['syllabus'])
+            if not assigned or assigned not in grouped:
+                continue
+            tp = progress_map.get(topic.id)
+            attempted = tp.total_attempted if tp else 0
+            correct = tp.total_correct if tp else 0
+            accuracy = tp.accuracy if tp else 0.0
+            grouped[assigned].append({
+                'id': topic.id,
+                'name': topic.name,
+                'slug': topic.slug,
+                'question_count': int(public_counts.get(topic.id, 0) or 0),
+                'attempted': attempted,
+                'correct': correct,
+                'accuracy': accuracy,
+                'is_weak': bool(tp.is_weak_area) if tp else False,
+            })
+
+        sections = []
+        for row in blueprint['syllabus']:
+            title = row['topic']
+            topics_in = grouped.get(title) or []
+            attempted = sum(t['attempted'] for t in topics_in)
+            correct = sum(t['correct'] for t in topics_in)
+            accuracy = round((correct * 100.0 / attempted), 1) if attempted else 0.0
+            is_weak = attempted >= 5 and accuracy < 55
+            status = 'unseen'
+            if attempted >= 5 and accuracy < 55:
+                status = 'weak'
+            elif attempted >= 5:
+                status = 'ok'
+            elif attempted > 0:
+                status = 'learning'
+            meta = section_meta(title, row.get('marks') or 0)
+            impact = round((meta['marks'] or 0) * (1 - (accuracy / 100.0 if attempted else 1)), 1)
+            sections.append({
+                **meta,
+                'attempted': attempted,
+                'correct': correct,
+                'accuracy': accuracy,
+                'is_weak': is_weak,
+                'status': status,
+                'exam_impact': impact,
+                'topics': sorted(topics_in, key=lambda t: (not t['is_weak'], t['accuracy'] if t['attempted'] else 999, t['name'])),
+            })
+
+        weak_sections = [s for s in sections if s['is_weak']]
+        weak_sections.sort(key=lambda s: s['exam_impact'], reverse=True)
+        if not weak_sections:
+            learning = [s for s in sections if s['status'] in ('learning', 'unseen')]
+            weak_sections = learning[:3]
+        focus = weak_sections[0] if weak_sections else (sections[0] if sections else None)
+
+        return Response({
+            'exam_id': getattr(exam, 'id', None),
+            'exam_name': blueprint['name'],
+            'exam_slug': blueprint['slug'],
+            'total_marks': blueprint['total_marks'],
+            'duration_minutes': blueprint['duration_minutes'],
+            'negative_marking': blueprint['negative_marking'],
+            'medium': blueprint['medium'],
+            'sections': sections,
+            'weak_sections': weak_sections,
+            'focus_section': focus,
+        })
 
 
 class TopicSummaryView(generics.ListAPIView):

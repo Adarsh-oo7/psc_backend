@@ -90,6 +90,7 @@ urlpatterns = [
     path('practice/<int:session_id>/submit/', views.PracticeSubmitView.as_view(), name='practice-submit'),
     path('analytics/weak-areas/', views.WeakAreasView.as_view(), name='weak-areas'),
     path('analytics/topic-summary/', views.TopicSummaryView.as_view(), name='topic-summary'),
+    path('syllabus-sections/', views.SyllabusSectionsView.as_view(), name='syllabus-sections'),
 
     # --- Master Study Plan & Primary Exam URLs ---
     path('master-study-plan/', views.MasterStudyPlanView.as_view(), name='master-study-plan-default'),

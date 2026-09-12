@@ -1,6 +1,7 @@
 from datetime import timedelta
+from django.db.models import Q, F, Max, OuterRef, Subquery, Case, When, IntegerField
 from django.utils import timezone
-from django.db.models import Q, F, Max
+from .kpsc_format import interleave_reviews
 from .models import Question, UserAnswer, TopicProgress
 
 
@@ -29,19 +30,77 @@ class QuestionEngine:
         return Exam.objects.filter(q_obj).distinct()
 
     @staticmethod
+    def _ordered_qs(ids):
+        if not ids:
+            return Question.objects.none()
+        preserved = Case(
+            *[When(pk=pk, then=pos) for pos, pk in enumerate(ids)],
+            output_field=IntegerField(),
+        )
+        return Question.objects.filter(pk__in=ids).order_by(preserved)
+
+    @staticmethod
+    def get_due_review_ids(user, queryset, limit: int):
+        """Question IDs whose latest attempt by this user was wrong, oldest first."""
+        if not user or not getattr(user, 'is_authenticated', False) or not limit:
+            return []
+        latest_ok = UserAnswer.objects.filter(
+            user=user, question_id=OuterRef('pk')
+        ).order_by('-answered_at').values('is_correct')[:1]
+        latest_at = UserAnswer.objects.filter(
+            user=user, question_id=OuterRef('pk')
+        ).order_by('-answered_at').values('answered_at')[:1]
+        due = queryset.annotate(
+            last_ok=Subquery(latest_ok),
+            last_at=Subquery(latest_at),
+        ).filter(last_ok=False).order_by('last_at')
+        return list(due.values_list('id', flat=True)[:limit])
+
+    @staticmethod
+    def _fill_fresh_ids(queryset, user, exclude_ids, needed):
+        if needed <= 0:
+            return []
+        exclude = list(exclude_ids)
+        if user and getattr(user, 'is_authenticated', False):
+            answered_ids = UserAnswer.objects.filter(user=user).values_list('question_id', flat=True).distinct()
+            unseen = queryset.exclude(id__in=list(answered_ids)).exclude(id__in=exclude)
+            ids = list(unseen.order_by('?').values_list('id', flat=True)[:needed])
+            if len(ids) >= needed:
+                return ids
+
+            stale_cutoff = timezone.now() - timedelta(days=30)
+            stale = queryset.annotate(
+                user_last_answered=Max('user_answers__answered_at', filter=Q(user_answers__user=user))
+            ).filter(user_last_answered__lt=stale_cutoff).exclude(id__in=exclude + ids)
+            ids.extend(list(stale.order_by('?').values_list('id', flat=True)[:needed - len(ids)]))
+            if len(ids) >= needed:
+                return ids
+
+            fallback = queryset.annotate(
+                user_last_answered=Max('user_answers__answered_at', filter=Q(user_answers__user=user))
+            ).exclude(id__in=exclude + ids).order_by('user_last_answered')
+            ids.extend(list(fallback.values_list('id', flat=True)[:needed - len(ids)]))
+            return ids
+
+        return list(
+            queryset.exclude(id__in=exclude).order_by('?').values_list('id', flat=True)[:needed]
+        )
+
+    @staticmethod
     def get_questions_for_user(user, filters: dict, limit: int = None):
         """
         Returns questions filtered by criteria, prioritizing:
-        1. Questions never answered by the user
-        2. Questions not answered in the last 30 days
-        3. Fallback: least-recently-answered questions (oldest answered_at timestamp)
+        1. Due reviews (latest attempt was wrong) mixed ~1 in 3
+        2. Questions never answered by the user
+        3. Questions not answered in the last 30 days
+        4. Fallback: least-recently-answered questions
         """
         # Base query to support tenant-aware (institute) questions
         base_query = Q(institute__isnull=True)
         if user and user.is_authenticated and hasattr(user, 'userprofile') and user.userprofile.institute:
             base_query |= Q(institute=user.userprofile.institute)
 
-        queryset = Question.objects.filter(base_query)
+        queryset = Question.objects.filter(base_query, status='approved', is_public=True)
 
         # Apply content filters
         from .models import Exam, Topic
@@ -109,6 +168,27 @@ class QuestionEngine:
             queryset = queryset.filter(difficulty=filters['difficulty'])
         if filters.get('exclude_ids'):
             queryset = queryset.exclude(id__in=filters['exclude_ids'])
+        if filters.get('section'):
+            from .models import Topic
+            from .psc_sections import assign_topic_to_exam_section, exam_blueprint, section_key, user_exam
+            section = section_key(str(filters['section']))
+            exam = None
+            if user and getattr(user, 'is_authenticated', False):
+                exam = user_exam(user)
+            blueprint = exam_blueprint(exam)
+            matching_ids = []
+            for topic in Topic.objects.all().only('id', 'name'):
+                assigned = assign_topic_to_exam_section(topic.name, blueprint['syllabus'])
+                if assigned and section_key(assigned) == section:
+                    matching_ids.append(topic.id)
+            if matching_ids:
+                queryset = queryset.filter(
+                    Q(topic_id__in=matching_ids) | Q(sub_topic__icontains=filters['section'])
+                )
+            else:
+                queryset = queryset.filter(
+                    Q(topic__name__icontains=filters['section']) | Q(sub_topic__icontains=filters['section'])
+                )
 
         # Fall back to user's preferred language if no explicit language filter is provided
         language_filter = filters.get('language')
@@ -119,47 +199,40 @@ class QuestionEngine:
             queryset = queryset.filter(language=language_filter)
 
 
-        if user and user.is_authenticated:
-            # Get all question IDs answered by this user
+        if user and getattr(user, 'is_authenticated', False):
+            if limit:
+                review_n = max(1, limit // 3)
+                review_ids = QuestionEngine.get_due_review_ids(user, queryset, review_n)
+                fresh_ids = QuestionEngine._fill_fresh_ids(
+                    queryset, user, review_ids, limit - len(review_ids)
+                )
+                return QuestionEngine._ordered_qs(
+                    interleave_reviews(fresh_ids, review_ids)[:limit]
+                )
+
             answered_ids = UserAnswer.objects.filter(
                 user=user
             ).values_list('question_id', flat=True).distinct()
-
-            # Pool 1: Never answered questions
             unseen = queryset.exclude(id__in=answered_ids)
-
-            # Check if there are unseen questions
             if unseen.exists():
-                if limit:
-                    return unseen.order_by('?')[:limit]
                 return unseen.order_by('?')
 
-            # Pool 2: Questions not answered in the last 30 days
             stale_cutoff = timezone.now() - timedelta(days=30)
             stale_questions = queryset.annotate(
                 user_last_answered=Max('user_answers__answered_at', filter=Q(user_answers__user=user))
             ).filter(
                 user_last_answered__lt=stale_cutoff
             )
-
             if stale_questions.exists():
-                if limit:
-                    return stale_questions.order_by('?')[:limit]
                 return stale_questions.order_by('?')
 
-            # Pool 3: Fallback - absolute oldest answered first (least-recently-answered)
-            fallback_questions = queryset.annotate(
+            return queryset.annotate(
                 user_last_answered=Max('user_answers__answered_at', filter=Q(user_answers__user=user))
             ).order_by('user_last_answered')
 
-            if limit:
-                return fallback_questions[:limit]
-            return fallback_questions
-        else:
-            # Anonymous user: return random questions matching the filters
-            if limit:
-                return queryset.order_by('?')[:limit]
-            return queryset.order_by('?')
+        if limit:
+            return queryset.order_by('?')[:limit]
+        return queryset.order_by('?')
 
     @staticmethod
     def get_weak_area_questions(user, limit: int = 20, language: str = None):
@@ -196,13 +269,14 @@ class QuestionEngine:
 
         today = timezone.localdate()
 
-        # Questions answered today
-        answered_today_ids = UserAnswer.objects.filter(
+        # Keep today's misses in the pool so they can be re-asked; skip only what's already correct today.
+        answered_correct_today_ids = UserAnswer.objects.filter(
             user=user,
-            answered_at__date=today
+            answered_at__date=today,
+            is_correct=True,
         ).values_list('question_id', flat=True)
 
-        filters = {'exclude_ids': list(answered_today_ids)}
+        filters = {'exclude_ids': list(answered_correct_today_ids)}
         if language:
             filters['language'] = language
 

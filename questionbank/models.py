@@ -122,26 +122,13 @@ class Question(models.Model):
     def save(self, *args, **kwargs):
         import re
         import hashlib
-        import json
         from django.utils.text import slugify
         import uuid
+        from .kpsc_format import apply_to_question
 
-        # Normalize options dict keys to uppercase A, B, C, D
-        if self.options:
-            if isinstance(self.options, str):
-                try:
-                    self.options = json.loads(self.options)
-                except Exception:
-                    self.options = {}
-            if isinstance(self.options, dict):
-                norm_opts = {}
-                for k, v in self.options.items():
-                    norm_opts[str(k).upper()] = str(v)
-                self.options = norm_opts
-
-        # Normalize correct_answer to uppercase
-        if self.correct_answer:
-            self.correct_answer = str(self.correct_answer).strip().upper()
+        issues = apply_to_question(self)
+        if issues:
+            self.is_public = False
 
         # Normalize text: lowercase, remove punctuation, strip
         normalized = re.sub(r'[^\w\s]', '', self.text).lower().strip()

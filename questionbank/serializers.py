@@ -31,11 +31,71 @@ class TopicSerializer(serializers.ModelSerializer):
         model = Topic
         fields = ['id', 'name', 'institute', 'image']
 
+
+class AttemptCountListSerializer(serializers.ListSerializer):
+    """Prefetch per-question attempt counts so option shuffle stays stable in a list."""
+
+    def to_representation(self, data):
+        request = self.context.get('request')
+        shuffle_on = self.context.get('shuffle')
+        if shuffle_on is None:
+            shuffle_on = True
+        if (
+            shuffle_on
+            and request is not None
+            and getattr(getattr(request, 'user', None), 'is_authenticated', False)
+            and 'attempt_counts' not in self.context
+        ):
+            items = list(data)
+            ids = [getattr(q, 'id', None) for q in items if getattr(q, 'id', None)]
+            if ids:
+                from django.db.models import Count
+                self.context['attempt_counts'] = dict(
+                    UserAnswer.objects.filter(user=request.user, question_id__in=ids)
+                    .values('question_id')
+                    .annotate(c=Count('id'))
+                    .values_list('question_id', 'c')
+                )
+            return super().to_representation(items)
+        return super().to_representation(data)
+
+
+def presented_question_fields(obj, context):
+    from .kpsc_format import present_mcq
+    request = context.get('request')
+    user = getattr(request, 'user', None) if request is not None else None
+    authenticated = user is not None and getattr(user, 'is_authenticated', False)
+    shuffle = context.get('shuffle')
+    if shuffle is None:
+        shuffle = authenticated
+    user_id = 0
+    salt = 0
+    qid = getattr(obj, 'id', 0) or 0
+    if shuffle and authenticated:
+        user_id = user.id
+        counts = context.get('attempt_counts')
+        if isinstance(counts, dict):
+            salt = int(counts.get(qid, 0) or 0)
+        else:
+            salt = UserAnswer.objects.filter(user=user, question_id=qid).count()
+    return present_mcq(
+        obj.text,
+        obj.options,
+        obj.correct_answer,
+        getattr(obj, 'explanation', '') or '',
+        user_id=user_id,
+        question_id=qid,
+        salt=salt,
+        shuffle=bool(shuffle),
+    )
+
+
 class QuestionSerializer(serializers.ModelSerializer):
     exams = ExamSerializer(many=True, read_only=True)
     topic = TopicSerializer(read_only=True)
     options = serializers.SerializerMethodField()
     correct_answer = serializers.SerializerMethodField()
+    text = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
@@ -43,21 +103,26 @@ class QuestionSerializer(serializers.ModelSerializer):
             'id', 'text', 'options', 'correct_answer', 'explanation', 
             'difficulty', 'institute', 'topic', 'sub_topic', 'exams'
         ]
+        list_serializer_class = AttemptCountListSerializer
+
+    def _presented(self, obj):
+        cache = getattr(self, '_presented_cache', None)
+        if cache is None:
+            self._presented_cache = {}
+            cache = self._presented_cache
+        key = getattr(obj, 'id', None) or id(obj)
+        if key not in cache:
+            cache[key] = presented_question_fields(obj, self.context)
+        return cache[key]
+
+    def get_text(self, obj):
+        return self._presented(obj)['text']
 
     def get_options(self, obj):
-        opts = obj.options
-        if isinstance(opts, str):
-            try:
-                import json
-                opts = json.loads(opts)
-            except Exception:
-                opts = {}
-        if isinstance(opts, dict):
-            return {str(k).upper(): str(v) for k, v in sorted(opts.items(), key=lambda x: str(x[0]).upper())}
-        return opts
+        return self._presented(obj)['options']
 
     def get_correct_answer(self, obj):
-        return str(obj.correct_answer or '').strip().upper()
+        return self._presented(obj)['correct_answer']
 
 class BookmarkSerializer(serializers.ModelSerializer):
     class Meta:
@@ -77,16 +142,23 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'full_name']
 
 class UserAnswerSerializer(serializers.ModelSerializer):
+    selected_option = serializers.CharField(max_length=1, required=False, allow_blank=True, default='')
+
     class Meta:
         model = UserAnswer
         fields = ['question', 'selected_option']
 
 class DetailedUserAnswerSerializer(serializers.ModelSerializer):
     """Provides full details about a user's answer for the history/review page."""
-    question = QuestionSerializer(read_only=True)
+    question = serializers.SerializerMethodField()
+
     class Meta:
         model = UserAnswer
         fields = ['id', 'question', 'selected_option', 'is_correct', 'answered_at']
+
+    def get_question(self, obj):
+        ctx = {**self.context, 'shuffle': False}
+        return QuestionSerializer(obj.question, context=ctx).data
 
 
 # ===================================================================
@@ -222,17 +294,45 @@ from io import StringIO
 from django.core.exceptions import ValidationError
 
 class QuestionsSerializer(serializers.ModelSerializer):
+    options = serializers.SerializerMethodField()
+    correct_answer = serializers.SerializerMethodField()
+    text = serializers.SerializerMethodField()
+
     class Meta:
         model = Question
         fields = [
             'id', 'text', 'options', 'correct_answer', 'explanation', 'difficulty'
         ]
+        list_serializer_class = AttemptCountListSerializer
+
+    def _presented(self, obj):
+        cache = getattr(self, '_presented_cache', None)
+        if cache is None:
+            self._presented_cache = {}
+            cache = self._presented_cache
+        key = getattr(obj, 'id', None) or id(obj)
+        if key not in cache:
+            cache[key] = presented_question_fields(obj, self.context)
+        return cache[key]
+
+    def get_text(self, obj):
+        return self._presented(obj)['text']
+
+    def get_options(self, obj):
+        return self._presented(obj)['options']
+
+    def get_correct_answer(self, obj):
+        return self._presented(obj)['correct_answer']
 
 class DailyExamSerializer(serializers.ModelSerializer):
     questions = QuestionsSerializer(many=True, read_only=True)
     class Meta:
         model = DailyExam
         fields = ['id', 'date', 'questions']
+
+    def to_representation(self, instance):
+        self.context['shuffle'] = False
+        return super().to_representation(instance)
 
 class TextUploadSerializer(serializers.Serializer):
     text_data = serializers.CharField(style={'base_template': 'textarea.html'})
@@ -301,6 +401,10 @@ class ModelExamDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = ModelExam
         fields = ['id', 'name', 'exam', 'duration_minutes', 'questions']
+
+    def to_representation(self, instance):
+        self.context['shuffle'] = False
+        return super().to_representation(instance)
 
 class ModelExamAttemptSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
@@ -472,9 +576,47 @@ class CurrentAffairsSerializer(serializers.ModelSerializer):
 from .models import StudyFeedCard
 
 class StudyFeedCardSerializer(serializers.ModelSerializer):
+    content_data = serializers.SerializerMethodField()
+
     class Meta:
         model = StudyFeedCard
         fields = ['id', 'card_type', 'title', 'content_data', 'psc_likelihood_tag', 'created_at']
+
+    def get_content_data(self, obj):
+        from .kpsc_format import format_question_payload, present_mcq
+        data = obj.content_data if isinstance(obj.content_data, dict) else {}
+        if obj.card_type != 'question':
+            return data
+        text = data.get('question_text') or data.get('text') or ''
+        question_id = data.get('question_id') or 0
+        payload = format_question_payload(
+            text,
+            data.get('options') or {},
+            data.get('correct_answer'),
+            data.get('explanation') or '',
+            extra={'question_id': question_id},
+        )
+        request = self.context.get('request')
+        user = getattr(request, 'user', None) if request is not None else None
+        user_id = 0
+        salt = 0
+        if user is not None and getattr(user, 'is_authenticated', False):
+            user_id = user.id
+            if question_id:
+                salt = UserAnswer.objects.filter(user=user, question_id=question_id).count()
+        presented = present_mcq(
+            payload['text'],
+            payload['options'],
+            payload['correct_answer'],
+            payload['explanation'],
+            user_id=user_id,
+            question_id=int(question_id or 0),
+            salt=salt,
+            shuffle=True,
+            extra={'question_id': question_id},
+        )
+        presented['question_text'] = presented['text']
+        return presented
 
 
 # ===================================================================
@@ -487,10 +629,24 @@ class TopicListSerializer(serializers.ModelSerializer):
     user_accuracy = serializers.SerializerMethodField()
     is_weak_area = serializers.SerializerMethodField()
     last_practiced = serializers.SerializerMethodField()
+    section_key = serializers.SerializerMethodField()
+    section_title = serializers.SerializerMethodField()
 
     class Meta:
         model = Topic
-        fields = ['id', 'name', 'slug', 'image', 'question_count', 'user_accuracy', 'is_weak_area', 'last_practiced']
+        fields = [
+            'id', 'name', 'slug', 'image', 'question_count',
+            'user_accuracy', 'is_weak_area', 'last_practiced',
+            'section_key', 'section_title',
+        ]
+
+    def get_section_key(self, obj):
+        from .psc_sections import classify_topic
+        return classify_topic(obj.name)
+
+    def get_section_title(self, obj):
+        from .psc_sections import classify_label, classify_topic
+        return classify_label(classify_topic(obj.name))
 
     def get_question_count(self, obj):
         return obj.questions_topic.count()
@@ -520,16 +676,50 @@ class TopicListSerializer(serializers.ModelSerializer):
 
 class QuestionMockSerializer(serializers.ModelSerializer):
     topic = serializers.CharField(source='topic.name', read_only=True)
+    options = serializers.SerializerMethodField()
+    text = serializers.SerializerMethodField()
 
     class Meta:
         model = Question
         fields = ['id', 'text', 'options', 'difficulty', 'sub_topic', 'topic']
 
+    def get_options(self, obj):
+        from .kpsc_format import normalize_options
+        return normalize_options(obj.options)
+
+    def get_text(self, obj):
+        from .kpsc_format import clean_question_text
+        return clean_question_text(obj.text)
+
 
 class QuestionResultSerializer(serializers.ModelSerializer):
+    options = serializers.SerializerMethodField()
+    correct_answer = serializers.SerializerMethodField()
+    text = serializers.SerializerMethodField()
+
     class Meta:
         model = Question
         fields = ['id', 'text', 'options', 'correct_answer', 'explanation', 'difficulty']
+        list_serializer_class = AttemptCountListSerializer
+
+    def _presented(self, obj):
+        cache = getattr(self, '_presented_cache', None)
+        if cache is None:
+            self._presented_cache = {}
+            cache = self._presented_cache
+        key = getattr(obj, 'id', None) or id(obj)
+        if key not in cache:
+            cache[key] = presented_question_fields(obj, self.context)
+        return cache[key]
+
+    def get_options(self, obj):
+        return self._presented(obj)['options']
+
+    def get_correct_answer(self, obj):
+        return self._presented(obj)['correct_answer']
+
+    def get_text(self, obj):
+        return self._presented(obj)['text']
 
 
 class PracticeSessionSerializer(serializers.ModelSerializer):
@@ -554,7 +744,7 @@ class SessionAnswerSerializer(serializers.Serializer):
 # Keep other serializers needed for previous APIs
 class PYQDetailSerializer(serializers.ModelSerializer):
     pdf_file_url = serializers.SerializerMethodField()
-    questions = QuestionSerializer(many=True, read_only=True)
+    questions = serializers.SerializerMethodField()
     question_count = serializers.SerializerMethodField()
 
     class Meta:
@@ -566,6 +756,10 @@ class PYQDetailSerializer(serializers.ModelSerializer):
         if obj.pdf_file and hasattr(obj.pdf_file, 'url'):
             return request.build_absolute_uri(obj.pdf_file.url) if request else obj.pdf_file.url
         return None
+
+    def get_questions(self, obj):
+        ctx = {**self.context, 'shuffle': False}
+        return QuestionSerializer(obj.questions.all(), many=True, context=ctx).data
 
     def get_question_count(self, obj):
         return obj.questions.count()
