@@ -83,7 +83,6 @@ urlpatterns = [
     path('study-feed/', views.StudyFeedView.as_view(), name='study-feed'),
     path('study-feed/view/', views.RecordCardView.as_view(), name='study-feed-view'),
     path('questions/<int:pk>/explanation/', views.QuestionExplanationView.as_view(), name='question-explanation'),
-    path('ai-doubt/', views.AIDoubtView.as_view(), name='ai-doubt'),
 
     # --- Study Flow & Analytics URLs ---
     path('topics/', views.TopicListView.as_view(), name='topic-list'),

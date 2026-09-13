@@ -1999,27 +1999,6 @@ class QuestionExplanationView(views.APIView):
         })
 
 
-class AIDoubtView(views.APIView):
-    """Free-form Kerala PSC doubt solver used by the AI Doubt tab."""
-    permission_classes = [IsAuthenticated]
-
-    def post(self, request):
-        text = (request.data.get('text') or request.data.get('question') or '').strip()
-        lang = request.data.get('lang', 'en')
-        if lang not in ('en', 'ml'):
-            lang = 'en'
-        if len(text) < 8:
-            return Response(
-                {'detail': 'Type a full PSC question or doubt (at least a short sentence).'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        from questionbank.ai_adapter import answer_psc_doubt
-        return Response({
-            'language': lang,
-            'explanation': answer_psc_doubt(text, lang),
-        })
-
-
 class LeaderboardView(views.APIView):
     permission_classes = [IsAuthenticated]
 
