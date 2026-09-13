@@ -1,7 +1,7 @@
 from datetime import timedelta
 from django.db.models import Q, F, Max, OuterRef, Subquery, Case, When, IntegerField
 from django.utils import timezone
-from .kpsc_format import interleave_reviews
+from .kpsc_format import interleave_reviews, is_servable
 from .models import Question, UserAnswer, TopicProgress
 
 
@@ -38,6 +38,24 @@ class QuestionEngine:
             output_field=IntegerField(),
         )
         return Question.objects.filter(pk__in=ids).order_by(preserved)
+
+    @staticmethod
+    def _servable_ids(ids):
+        """Drop leftover shuffled/broken banks even if is_public was not refreshed."""
+        if not ids:
+            return []
+        by_id = {
+            q.id: q
+            for q in Question.objects.filter(pk__in=ids).only(
+                'id', 'text', 'options', 'correct_answer'
+            )
+        }
+        return [
+            qid for qid in ids
+            if qid in by_id and is_servable(
+                by_id[qid].text, by_id[qid].options, by_id[qid].correct_answer
+            )
+        ]
 
     @staticmethod
     def get_due_review_ids(user, queryset, limit: int):
@@ -202,10 +220,15 @@ class QuestionEngine:
         if user and getattr(user, 'is_authenticated', False):
             if limit:
                 review_n = max(1, limit // 3)
-                review_ids = QuestionEngine.get_due_review_ids(user, queryset, review_n)
-                fresh_ids = QuestionEngine._fill_fresh_ids(
-                    queryset, user, review_ids, limit - len(review_ids)
-                )
+                review_ids = QuestionEngine._servable_ids(
+                    QuestionEngine.get_due_review_ids(user, queryset, review_n * 2)
+                )[:review_n]
+                fresh_needed = max(0, limit - len(review_ids))
+                fresh_ids = QuestionEngine._servable_ids(
+                    QuestionEngine._fill_fresh_ids(
+                        queryset, user, review_ids, max(fresh_needed * 2, fresh_needed)
+                    )
+                )[:fresh_needed]
                 return QuestionEngine._ordered_qs(
                     interleave_reviews(fresh_ids, review_ids)[:limit]
                 )
@@ -231,7 +254,8 @@ class QuestionEngine:
             ).order_by('user_last_answered')
 
         if limit:
-            return queryset.order_by('?')[:limit]
+            raw_ids = list(queryset.order_by('?').values_list('id', flat=True)[: max(limit * 2, limit)])
+            return QuestionEngine._ordered_qs(QuestionEngine._servable_ids(raw_ids)[:limit])
         return queryset.order_by('?')
 
     @staticmethod

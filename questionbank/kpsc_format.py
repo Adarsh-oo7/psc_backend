@@ -61,10 +61,64 @@ ANCHOR_LAST_RE = re.compile(
 META_OPTION_RE = ANCHOR_LAST_RE
 PERSON_STEM_RE = re.compile(
     r'(?:^\s*(?:who|whom)\b|'
-    r'\bwho\s+(?:is|was|were|invented|founded|wrote|authored|discovered|known)\b|'
+    r'\bwho\s+(?:is|was|were|invented|founded|wrote|authored|discovered|known|appoints|appointed)\b|'
     r'\bwhich\s+(?:person|leader|poet|author|king|queen|minister|founder|scientist)\b|'
     r'ആരാണ്|ആരായിരുന്നു|ആരുടെ)',
     re.I,
+)
+# Asking who the *appointing authority* is — not "who was appointed".
+APPOINTS_STEM_RE = re.compile(
+    r'^\s*who\s+appoints\b|'
+    r'\bwho\s+(?:has|have)\s+the\s+power\s+to\s+appoint\b|'
+    r'\b(?:is|are)\s+appointed\s+by\b|'
+    r'\bappointing\s+authority\b|'
+    r'നിയമിക്കുന്നത്|നിയമിക്കുന്നതു',
+    re.I,
+)
+# Constitutional office / body as a full option (not a person's name).
+OFFICE_OPTION_RE = re.compile(
+    r'^(?:the\s+)?'
+    r'(?:president|vice[-\s]?president|prime\s+minister|governor|chief\s+minister|'
+    r'(?:finance|home|defence|defense|law|railways?|education|external\s+affairs)\s+minister|'
+    r'parliament|lok\s+sabha|rajya\s+sabha|speaker|deputy\s+speaker|'
+    r'supreme\s+court|high\s+court|chief\s+justice|'
+    r'(?:union\s+)?public\s+service\s+commission|upsc|'
+    r'joint(?:\s+state)?\s+public\s+service\s+commission|'
+    r'election\s+commission|finance\s+commission|'
+    r'cabinet|union\s+cabinet|council\s+of\s+ministers|'
+    r'(?:union|central|state)\s+government|'
+    r'comptroller(?:\s+and\s+auditor\s+general)?|cag|'
+    r'attorney\s+general|advocate\s+general|'
+    r'planning\s+commission|niti\s+aayog)'
+    r'(?:\s+of\s+(?:india|the\s+(?:union|state|concerned\s+states?)|kerala))?'
+    r's?\s*$',
+    re.I,
+)
+# Two-word titles like "Home Minister" must not count as a person's name.
+TITLE_OPTION_RE = re.compile(
+    r'\b(minister|government|commission|court|committee|department|'
+    r'president|governor|parliament|speaker|cabinet|council|'
+    r'secretary|authority|board|assembly|sabha|ministry)\b',
+    re.I,
+)
+PROCEDURE_OPTION_RE = re.compile(
+    r'crossing the floor|no[-\s]?confidence(?:\s+motion)?|question hour|zero hour|'
+    r'hung parliament|cut motion|calling attention|adjournment motion|'
+    r'first past the post|anti[-\s]?defection|collective responsibility|'
+    r'joint sitting|money bill|ordinary bill',
+    re.I,
+)
+PROCEDURE_EXACT = {
+    'indirect', 'direct', 'whip', 'quorum', 'ordinance', 'impeachment',
+    'defection', 'indirectly', 'directly',
+}
+# "Zail Singh", "Dr. Rajendra Prasad", "E. M. S. Namboodiripad"
+PERSON_NAME_RE = re.compile(
+    r'^(?:(?:dr|prof|sri|smt|shri|mr|mrs)\.?\s+)?'
+    r'(?:[A-Z]\.\s*){0,4}'
+    r'[A-Z][a-z]+(?:[-\'][A-Z][a-z]+)?'
+    r'(?:\s+(?:[A-Z]\.\s*)?[A-Z][a-z]+(?:[-\'][A-Z][a-z]+)?)+'
+    r'\.?$'
 )
 YEAR_STEM_RE = re.compile(
     r'\b(?:in which year|which year|when was|when did|in the year)\b|'
@@ -226,6 +280,78 @@ def _has_heterogeneous_options(stem: str, values: List[str]) -> bool:
     return False
 
 
+def _semantic_kind(text: str) -> str:
+    """Finer type than _option_kind: office vs person vs procedure vs year."""
+    value = (text or '').strip()
+    if not value:
+        return 'empty'
+    if ANCHOR_LAST_RE.match(value):
+        return 'meta'
+    if OFFICE_OPTION_RE.match(value):
+        return 'office'
+    lowered = value.lower()
+    if lowered in PROCEDURE_EXACT or PROCEDURE_OPTION_RE.search(value):
+        return 'procedure'
+    if PURE_NUMBER_RE.match(value) or YEAR_OR_NUMBER_RE.match(value):
+        return 'year'
+    if PERSON_NAME_RE.match(value) and not TITLE_OPTION_RE.search(value):
+        return 'person'
+    return 'other'
+
+
+def unrelated_option_bank(stem: str, options: Any) -> bool:
+    """True when A–D are mixed leftovers from different questions.
+
+    Example students hit: 'Who appoints … Joint PSC?' with
+    President / Zail Singh / Indirect / Crossing the floor.
+    """
+    opts = normalize_options(options)
+    kinds = [_semantic_kind(opts[k]) for k in LETTERS]
+    uniq = {k for k in kinds if k not in ('empty', 'meta', 'other')}
+    if 'person' in uniq and 'procedure' in uniq:
+        return True
+    if len(uniq) >= 3:
+        return True
+    if 'year' in uniq and (uniq & {'office', 'person', 'procedure'}):
+        return True
+    stem_text = clean_question_text(stem)
+    if APPOINTS_STEM_RE.search(stem_text):
+        if 'procedure' in uniq or 'person' in uniq:
+            return True
+    if PERSON_STEM_RE.search(stem_text) and 'procedure' in uniq:
+        return True
+    return False
+
+
+def jpsc_appointment_options() -> Tuple[Dict[str, str], str, str]:
+    """Canonical PSC choices for the Joint Public Service Commission appointment stem."""
+    options = {
+        'A': 'Prime Minister',
+        'B': 'President',
+        'C': 'Parliament',
+        'D': 'Governor of the concerned States',
+    }
+    explanation = (
+        'Article 316: the Chairman and other members of the Union Public Service '
+        'Commission or a Joint Commission are appointed by the President of India.'
+    )
+    return options, 'B', explanation
+
+
+def repair_known_unrelated_question(question) -> bool:
+    """Rewrite a few well-known shuffled stems in place. Returns True if repaired."""
+    stem = clean_question_text(getattr(question, 'text', '') or '').lower()
+    if 'joint public service commission' in stem and APPOINTS_STEM_RE.search(stem):
+        options, answer, explanation = jpsc_appointment_options()
+        question.options = options
+        question.correct_answer = answer
+        if not (getattr(question, 'explanation', None) or '').strip():
+            question.explanation = explanation
+        question.is_public = True
+        return True
+    return False
+
+
 def servability_issues(text: str, options: Any, correct_answer: Any) -> List[str]:
     """Structural + KPSC-medium checks. Empty list means the item is exam-ready."""
     issues: List[str] = []
@@ -270,6 +396,9 @@ def servability_issues(text: str, options: Any, correct_answer: Any) -> List[str
 
     if len(values) == 4 and _has_heterogeneous_options(stem, values):
         issues.append('heterogeneous_options')
+
+    if unrelated_option_bank(stem, opts):
+        issues.append('unrelated_options')
 
     leaked = [k for k, v in opts.items() if ANSWER_LEAK_RE.match(v or '')]
     if leaked:

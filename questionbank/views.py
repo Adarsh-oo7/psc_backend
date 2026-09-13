@@ -627,6 +627,34 @@ class SubmitExamView(views.APIView):
         _, level_up, new_level = award_xp(request.user, xp_earned)
         current_streak, longest_streak, freeze_used, streak_promo_awarded = update_streak(request.user)
 
+        next_step = {
+            'label': 'Keep practising',
+            'path': '/feed',
+            'reason': 'Study Feed mixes new PSC items with anything you missed.',
+        }
+        if wrong_count:
+            next_step = {
+                'label': 'Fix the ones you missed',
+                'path': '/wrong-answers',
+                'reason': f'{wrong_count} item{"s" if wrong_count != 1 else ""} will be re-asked until they stick.',
+            }
+        else:
+            from django.db.models import F
+            from .models import TopicProgress
+            weak = (
+                TopicProgress.objects.filter(user=request.user, total_attempted__gte=5)
+                .annotate(acc=100.0 * F('total_correct') / F('total_attempted'))
+                .order_by('acc')
+                .select_related('topic')
+                .first()
+            )
+            if weak and weak.topic_id and weak.acc < 70:
+                next_step = {
+                    'label': f'Drill {weak.topic.name}',
+                    'path': f'/topics/{weak.topic.slug}' if getattr(weak.topic, 'slug', None) else '/topics',
+                    'reason': f'This section is at {round(weak.acc)}% — raising it moves your cut-off.',
+                }
+
         response_data = {
             'results': {
                 'score': round(final_score, 2),
@@ -644,7 +672,8 @@ class SubmitExamView(views.APIView):
                 'longest_streak': longest_streak,
                 'freeze_used': freeze_used,
                 'streak_promo_awarded': streak_promo_awarded
-            }
+            },
+            'next_step': next_step,
         }
 
         return Response(response_data, status=status.HTTP_200_OK)
@@ -668,6 +697,19 @@ class MyProgressDashboardView(views.APIView):
     def get(self, request):
         user = request.user
         profile = user.userprofile
+        from django.utils import timezone
+        today = timezone.localdate()
+        questions_today = (
+            UserAnswer.objects.filter(user=user, answered_at__date=today)
+            .values('question_id')
+            .distinct()
+            .count()
+        )
+        study_loop = {
+            'questions_today': questions_today,
+            'daily_goal': 20,
+            'goal_remaining': max(0, 20 - questions_today),
+        }
         
         mode = request.query_params.get('mode', 'focus')
 
@@ -692,7 +734,8 @@ class MyProgressDashboardView(views.APIView):
                     'heatmap_data': [],
                     'badges': [],
                     'no_data': True,
-                    'message': "Please set one or more focus exams in your profile to see a personalized report."
+                    'message': "Please set one or more focus exams in your profile to see a personalized report.",
+                    **study_loop,
                 })
             
             report_title = f"Focus Report: {', '.join([exam.name for exam in focus_exams])}"
@@ -795,7 +838,8 @@ class MyProgressDashboardView(views.APIView):
                 'heatmap_data': [],
                 'badges': badges,
                 'no_data': True,
-                'message': f"No progress data available yet for '{report_title}'. Start taking quizzes!"
+                'message': f"No progress data available yet for '{report_title}'. Start taking quizzes!",
+                **study_loop,
             })
             
         # --- 1. Calculate Performance by Topic ---
@@ -875,7 +919,8 @@ class MyProgressDashboardView(views.APIView):
             'weakest_topics': [_topic_card(row) for row in weakest_rows],
             'answer_history': DetailedUserAnswerSerializer(recent_answers, many=True).data,
             'heatmap_data': heatmap_data,
-            'badges': badges
+            'badges': badges,
+            **study_loop,
         }
         return Response(data)
 # ===================================================================
@@ -2245,7 +2290,7 @@ class TopicQuestionsView(generics.ListAPIView):
         if hasattr(user, 'userprofile') and user.userprofile.institute:
             base_query |= Q(topic=topic, institute=user.userprofile.institute)
             
-        qs = Question.objects.filter(base_query).distinct()
+        qs = Question.objects.filter(base_query, status='approved', is_public=True).distinct()
         
         preferred_exams = Exam.objects.none()
         if user and user.is_authenticated and hasattr(user, 'userprofile'):
@@ -2446,14 +2491,22 @@ class PracticeSubmitView(views.APIView):
         session.save()
         
         xp_earned = (correct_count * 10) + (len(answers_data) * 2)
-        from questionbank.gamification import award_xp
+        from questionbank.gamification import award_xp, update_streak
         award_xp(request.user, xp_earned)
+        current_streak, longest_streak, freeze_used, streak_promo_awarded = update_streak(request.user)
         
         return Response({
             'score_percent': session.score_percent,
             'correct_count': correct_count,
             'total_questions': len(answers_data),
             'xp_earned': xp_earned,
+            'gamification': {
+                'xp_earned': xp_earned,
+                'current_streak': current_streak,
+                'longest_streak': longest_streak,
+                'freeze_used': freeze_used,
+                'streak_promo_awarded': streak_promo_awarded,
+            },
             'results': results_list
         }, status=200)
 

@@ -137,6 +137,56 @@ class KpscFormatTests(SimpleTestCase):
             'C',
         ))
 
+    def test_who_appoints_with_unrelated_polity_leftovers_is_unservable(self):
+        stem = 'Who appoints the chairman and other members of the Joint Public Service Commission?'
+        broken = {
+            'A': 'Crossing the floor',
+            'B': 'Indirect',
+            'C': 'President',
+            'D': 'Zail Singh',
+        }
+        issues = servability_issues(stem, broken, 'C')
+        self.assertIn('unrelated_options', issues)
+        self.assertFalse(is_servable(stem, broken, 'C'))
+
+        good = {
+            'A': 'Prime Minister',
+            'B': 'President',
+            'C': 'Parliament',
+            'D': 'Governor of the concerned States',
+        }
+        self.assertTrue(is_servable(stem, good, 'B'))
+        self.assertTrue(is_servable(
+            'Who appoints the RBI Governor?',
+            {
+                'A': 'President of India',
+                'B': 'Prime Minister of India',
+                'C': 'Finance Minister of India',
+                'D': 'Union Government',
+            },
+            'D',
+        ))
+        self.assertTrue(is_servable(
+            'The National Security Advisor is appointed by:',
+            {
+                'A': 'President',
+                'B': 'Prime Minister',
+                'C': 'Home Minister',
+                'D': 'Defence Minister',
+            },
+            'B',
+        ))
+        self.assertTrue(is_servable(
+            'Who was the first Chief Minister of Kerala?',
+            {
+                'A': 'E. M. S. Namboodiripad',
+                'B': 'Pattom Thanu Pillai',
+                'C': 'C. Achutha Menon',
+                'D': 'K. Karunakaran',
+            },
+            'A',
+        ))
+
     def test_shuffle_is_stable_and_grades_the_shown_letter(self):
         opts = {'A': 'Periyar', 'B': 'Bharathapuzha', 'C': 'Pamba', 'D': 'Chaliyar'}
         first, letter1 = shuffle_options(opts, 'A', user_id=7, question_id=42, salt=0)
