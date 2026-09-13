@@ -41,6 +41,7 @@ urlpatterns = [
     path('submit-answer/', views.SubmitAnswerView.as_view(), name='submit-answer'),
     path('my-progress-dashboard/', views.MyProgressDashboardView.as_view(), name='my-progress-dashboard'),
     path('bookmarks/', views.BookmarkListCreateView.as_view(), name='bookmark-list-create'),
+    path('bookmarks/<int:pk>/', views.BookmarkDetailView.as_view(), name='bookmark-detail'),
     path('reports/', views.ReportListCreateView.as_view(), name='report-list-create'),
     path('leaderboard/', views.LeaderboardView.as_view(), name='leaderboard'),
     path('wrong-answers/', views.WrongAnswersView.as_view(), name='wrong-answers'),
@@ -82,6 +83,7 @@ urlpatterns = [
     path('study-feed/', views.StudyFeedView.as_view(), name='study-feed'),
     path('study-feed/view/', views.RecordCardView.as_view(), name='study-feed-view'),
     path('questions/<int:pk>/explanation/', views.QuestionExplanationView.as_view(), name='question-explanation'),
+    path('ai-doubt/', views.AIDoubtView.as_view(), name='ai-doubt'),
 
     # --- Study Flow & Analytics URLs ---
     path('topics/', views.TopicListView.as_view(), name='topic-list'),

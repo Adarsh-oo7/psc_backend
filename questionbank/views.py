@@ -931,11 +931,18 @@ class BookmarkListCreateView(generics.ListCreateAPIView):
     serializer_class = BookmarkSerializer
     permission_classes = [IsAuthenticated]
     def get_queryset(self):
-        return Bookmark.objects.filter(user=self.request.user).order_by('-created_at')
+        return Bookmark.objects.filter(user=self.request.user).select_related('question', 'question__topic').order_by('-created_at')
     def perform_create(self, serializer):
         question = serializer.validated_data.get('question')
         if not Bookmark.objects.filter(user=self.request.user, question=question).exists():
             serializer.save(user=self.request.user)
+
+
+class BookmarkDetailView(generics.DestroyAPIView):
+    serializer_class = BookmarkSerializer
+    permission_classes = [IsAuthenticated]
+    def get_queryset(self):
+        return Bookmark.objects.filter(user=self.request.user)
 
 class ReportListCreateView(generics.ListCreateAPIView):
     serializer_class = ReportSerializer
@@ -1992,6 +1999,27 @@ class QuestionExplanationView(views.APIView):
         })
 
 
+class AIDoubtView(views.APIView):
+    """Free-form Kerala PSC doubt solver used by the AI Doubt tab."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        text = (request.data.get('text') or request.data.get('question') or '').strip()
+        lang = request.data.get('lang', 'en')
+        if lang not in ('en', 'ml'):
+            lang = 'en'
+        if len(text) < 8:
+            return Response(
+                {'detail': 'Type a full PSC question or doubt (at least a short sentence).'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        from questionbank.ai_adapter import answer_psc_doubt
+        return Response({
+            'language': lang,
+            'explanation': answer_psc_doubt(text, lang),
+        })
+
+
 class LeaderboardView(views.APIView):
     permission_classes = [IsAuthenticated]
 
@@ -2207,7 +2235,7 @@ class WeeklyGoalsView(views.APIView):
 # --- STUDY FLOW & ANALYTICS VIEWS ---
 # ===================================================================
 from rest_framework import generics, views, status
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 from django.shortcuts import get_object_or_404
 from django.db.models import Q
@@ -2222,7 +2250,7 @@ from .serializers import (
 
 class TopicListView(generics.ListAPIView):
     serializer_class = TopicListSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         user = self.request.user

@@ -129,6 +129,12 @@ class BookmarkSerializer(serializers.ModelSerializer):
         model = Bookmark
         fields = ['id', 'question', 'created_at']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        ctx = {**self.context, 'shuffle': False}
+        data['question'] = QuestionSerializer(instance.question, context=ctx).data
+        return data
+
 class ReportSerializer(serializers.ModelSerializer):
     class Meta:
         model = Report
