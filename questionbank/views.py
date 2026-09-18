@@ -48,30 +48,24 @@ class RegisterView(generics.CreateAPIView):
     permission_classes = [AllowAny]
 
     def create(self, request, *args, **kwargs):
-        username = request.data.get('username')
-        email = request.data.get('email')
-        password = request.data.get('password')
-        if not all([username, email, password]):
-            return Response({'error': 'Username, email, and password are required.'}, status=status.HTTP_400_BAD_REQUEST)
-        if User.objects.filter(username=username).exists():
-            return Response({'error': 'Username already exists'}, status=status.HTTP_400_BAD_REQUEST)
-        if User.objects.filter(email=email).exists():
-            return Response({'error': 'Email already exists'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        user = User.objects.create_user(
-            username=username, 
-            email=email, 
-            password=password,
-            first_name=request.data.get('first_name', ''),
-            last_name=request.data.get('last_name', '')
+        from .auth import register_student, issue_tokens
+
+        user, errors = register_student(request.data)
+        if errors:
+            payload = dict(errors)
+            payload['error'] = next(iter(errors.values()))[0]
+            return Response(payload, status=status.HTTP_400_BAD_REQUEST)
+
+        tokens = issue_tokens(user)
+        logger.info("User %s registered successfully.", user.username)
+        return Response(
+            {
+                **tokens,
+                'user': UserSerializer(user).data,
+                'next': 'onboarding',
+            },
+            status=status.HTTP_201_CREATED,
         )
-        profile = UserProfile.objects.create(user=user)
-        phone_number = request.data.get('phone_number')
-        if phone_number:
-            profile.phone_number = phone_number
-            profile.save()
-        logger.info(f"User {username} registered successfully.")
-        return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
 class UserView(generics.RetrieveAPIView):
     """Retrieves details for the currently authenticated user."""
@@ -87,6 +81,43 @@ class UserProfileView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         profile, _ = UserProfile.objects.get_or_create(user=self.request.user)
         return profile
+
+
+class ChangePasswordView(views.APIView):
+    """Lets a signed-in student change their password from Settings."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        current_password = (request.data.get('current_password') or '').strip()
+        new_password = request.data.get('new_password') or ''
+        confirm_password = request.data.get('confirm_password') or new_password
+
+        if not request.user.has_usable_password():
+            return Response(
+                {'error': 'This account signs in with Google. Use Google to continue, or set a password from your Google account recovery.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not current_password:
+            return Response({'current_password': 'Enter your current password.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not request.user.check_password(current_password):
+            return Response({'current_password': 'That current password is not correct.'}, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 8:
+            return Response({'new_password': 'Use at least 8 characters.'}, status=status.HTTP_400_BAD_REQUEST)
+        if new_password != confirm_password:
+            return Response({'confirm_password': 'New passwords do not match.'}, status=status.HTTP_400_BAD_REQUEST)
+        if new_password == current_password:
+            return Response({'new_password': 'Pick a password that is different from the current one.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        from django.contrib.auth.password_validation import validate_password
+        from django.core.exceptions import ValidationError as DjangoValidationError
+        try:
+            validate_password(new_password, request.user)
+        except DjangoValidationError as exc:
+            return Response({'new_password': list(exc.messages)}, status=status.HTTP_400_BAD_REQUEST)
+
+        request.user.set_password(new_password)
+        request.user.save(update_fields=['password'])
+        return Response({'status': 'Password updated. Use the new password next time you log in.'})
 
 
 class GoogleSignInView(views.APIView):
@@ -159,23 +190,17 @@ class GoogleSignInView(views.APIView):
             }, status=status.HTTP_200_OK)
 
         except ValueError as e:
-            logger.warning(f"Invalid Google ID token signature or claim: {str(e)}")
-            return Response({
-                'error': 'Invalid Google token.',
-                'details': {
-                    'server_client_id': client_id,
-                    'token_preview': f"{credential[:15]}...{credential[-15:]}" if credential else None
-                }
-            }, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            import traceback
+            logger.warning("Invalid Google ID token signature or claim: %s", e)
+            return Response(
+                {'error': 'Google sign-in failed. Try again, or create an account with email.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception:
             logger.exception("Unexpected error during Google Sign-In.")
-            return Response({
-                'error': 'Internal server error.',
-                'exception_type': type(e).__name__,
-                'exception_message': str(e),
-                'traceback': traceback.format_exc()
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(
+                {'error': 'Google sign-in is unavailable right now. Use email to create an account.'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # ===================================================================
@@ -231,6 +256,22 @@ class QuestionListView(generics.ListAPIView):
     serializer_class = QuestionSerializer
     permission_classes = [AllowAny]
 
+    def list(self, request, *args, **kwargs):
+        exam_id = request.query_params.get('exam_id') or request.query_params.get('exam')
+        if exam_id and request.user and request.user.is_authenticated:
+            from subscriptions.vfa_access import is_vfa_exam, vfa_access_payload, vfa_paywall_response
+            exam_obj = None
+            key = str(exam_id).strip()
+            if key.isdigit():
+                exam_obj = Exam.objects.filter(pk=int(key)).first()
+            else:
+                exam_obj = Exam.objects.filter(slug__iexact=key).first()
+            if is_vfa_exam(exam_obj, slug=key, name=key):
+                access = vfa_access_payload(request.user)
+                if not access['can_attempt']:
+                    return vfa_paywall_response(request.user)
+        return super().list(request, *args, **kwargs)
+
     def get_queryset(self):
         user = self.request.user
         filters = {}
@@ -254,6 +295,10 @@ class QuestionListView(generics.ListAPIView):
         section = self.request.query_params.get('section')
         if section:
             filters['section'] = section
+
+        practice_mode = self.request.query_params.get('practice_mode')
+        if practice_mode in ('full', 'focus'):
+            filters['practice_mode'] = practice_mode
 
         limit = self.request.query_params.get('limit')
         limit_val = int(limit) if limit and limit.isdigit() else None
@@ -293,26 +338,13 @@ class DailyQuizView(views.APIView):
 
 
 class WeeklyCurrentAffairsQuizView(views.APIView):
-    """Provides a weekly quiz of current affairs questions from the past week."""
+    """Weekly quiz from the last 10 days of Current Affairs MCQs."""
     permission_classes = [AllowAny]
+
     def get(self, request):
-        from django.utils import timezone
-        from datetime import timedelta
-        from .models import CurrentAffairs
-        topic = Topic.objects.filter(name="Daily Current Affairs").first()
-        if not topic:
-            return Response([])
-        # Use CurrentAffairs.publication_date to find recent MCQ titles
-        cutoff = (timezone.now() - timedelta(days=10)).date()
-        recent_ca_titles = CurrentAffairs.objects.filter(
-            publication_date__gte=cutoff
-        ).values_list('title', flat=True)
-        # Match Questions in the topic whose text matches recent current affairs titles
-        qs = Question.objects.filter(topic=topic, text__in=recent_ca_titles).order_by('?')[:15]
-        if qs.count() < 5:
-            # Fallback: return random questions from the Daily Current Affairs topic
-            qs = Question.objects.filter(topic=topic).order_by('?')[:15]
-        serializer = QuestionSerializer(qs, many=True, context={'request': request})
+        from .current_affairs_quiz import questions_for_weekly_quiz
+        questions = questions_for_weekly_quiz(limit=15)
+        serializer = QuestionSerializer(questions, many=True, context={'request': request})
         return Response(serializer.data)
 
 
@@ -340,7 +372,22 @@ class GenerateMockExamView(views.APIView):
     """Generates a full mock exam based on the ExamSyllabus, padded to exactly 100 questions."""
     permission_classes = [IsAuthenticated]
     def get(self, request, exam_id):
-        exam = get_object_or_404(Exam, pk=exam_id)
+        from .kpsc_format import is_servable
+        key = str(exam_id).strip()
+        if key.isdigit():
+            exam = get_object_or_404(Exam, pk=int(key))
+        else:
+            exam = Exam.objects.filter(slug__iexact=key).first()
+            if not exam:
+                clean = key.replace('-', ' ').strip()
+                exam = Exam.objects.filter(Q(name__iexact=key) | Q(name__icontains=clean)).first()
+            if not exam:
+                return Response({'detail': 'Exam not found.'}, status=status.HTTP_404_NOT_FOUND)
+        from subscriptions.vfa_access import is_vfa_exam, vfa_access_payload, vfa_paywall_response
+        if is_vfa_exam(exam):
+            access = vfa_access_payload(request.user)
+            if not access['can_attempt']:
+                return vfa_paywall_response(request.user)
         syllabus_parts = exam.syllabus_parts.all()
         language = request.query_params.get('language')
         
@@ -443,6 +490,27 @@ class GenerateMockExamView(views.APIView):
                     all_questions.append(q)
                     seen_ids.add(q.id)
                     
+        all_questions = [
+            q for q in all_questions
+            if getattr(q, 'is_public', True)
+            and getattr(q, 'status', 'approved') == 'approved'
+            and is_servable(q.text, q.options, q.correct_answer)
+        ]
+        if len(all_questions) < 100:
+            extra_filter = Q(is_public=True, status='approved')
+            if language:
+                extra_filter &= Q(language=language)
+            extras = list(
+                Question.objects.filter(extra_filter)
+                .exclude(id__in=[q.id for q in all_questions])
+                .order_by('?')[:250]
+            )
+            for q in extras:
+                if is_servable(q.text, q.options, q.correct_answer):
+                    all_questions.append(q)
+                if len(all_questions) >= 100:
+                    break
+
         # If we somehow exceeded 100 questions (due to weightage sum), slice it down
         if len(all_questions) > 100:
             all_questions = all_questions[:100]
@@ -675,6 +743,17 @@ class SubmitExamView(views.APIView):
             },
             'next_step': next_step,
         }
+
+        exam_key = request.data.get('exam_id') or request.data.get('exam') or ''
+        from subscriptions.vfa_access import is_vfa_exam, record_vfa_set
+        if is_vfa_exam(slug=str(exam_key), name=str(exam_key)):
+            record_vfa_set(request.user)
+        elif questions.exists():
+            vfa_linked = questions.filter(
+                exams__slug__icontains='village-field'
+            ).exists() or questions.filter(exams__name__icontains='Village Field').exists()
+            if vfa_linked and (not exam_key or is_vfa_exam(slug=str(exam_key))):
+                record_vfa_set(request.user)
 
         return Response(response_data, status=status.HTTP_200_OK)
   # In questionbank/views.py
@@ -1735,9 +1814,19 @@ class PublicCurrentAffairsListView(generics.ListAPIView):
     """
     Public SEO endpoint to list recent current affairs.
     """
-    queryset = CurrentAffairs.objects.all()
     serializer_class = CurrentAffairsSerializer
     permission_classes = [AllowAny]
+    pagination_class = None
+
+    def get_queryset(self):
+        from django.utils import timezone
+        from datetime import timedelta
+        qs = CurrentAffairs.objects.all()
+        date = self.request.query_params.get('date')
+        if date:
+            return qs.filter(publication_date=date)
+        cutoff = timezone.localdate() - timedelta(days=21)
+        return qs.filter(publication_date__gte=cutoff)
 
 class PublicCurrentAffairsDetailView(generics.RetrieveAPIView):
     """
