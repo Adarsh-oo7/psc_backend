@@ -6,12 +6,17 @@ SYLLABUS_DATABASE = {
 
     # ─────────────────────────────────────────────
     # 1. VILLAGE FIELD ASSISTANT (VFA)
-    # Cat: 571/2025 | Exam: Sept 19, 2026 | Neg: -1/3
+    # Cat: 571/2025 | District-wise: 19 Sep / 17 Oct / 31 Oct 2026 | Neg: -1/3
     # ─────────────────────────────────────────────
     "village-field-assistant": {
         "name": "Village Field Assistant (VFA)",
         "cat_no": "571/2025",
         "exam_date": "2026-09-19",
+        "exam_dates": {
+            "2026-09-19": ["Thiruvananthapuram", "Pathanamthitta", "Idukki", "Malappuram", "Wayanad"],
+            "2026-10-17": ["Alappuzha", "Kottayam", "Thrissur", "Kozhikode", "Kasaragod"],
+            "2026-10-31": ["Kollam", "Ernakulam", "Palakkad", "Kannur"],
+        },
         "level": "SSLC",
         "duration_minutes": 90,
         "total_marks": 100,

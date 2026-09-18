@@ -248,7 +248,7 @@ class Command(BaseCommand):
             {
                 "exam_keywords": ["Village Field Assistant", "VFA"],
                 "title": "Village Field Assistant (VFA) 2026 Target Study Roadmap",
-                "description": "Structured 45-day intensive study roadmap for VFA (Cat 571/2023). Focuses on SCERT science, arithmetic, and Malayalam.",
+                "description": "Structured 45-day intensive study roadmap for VFA (Cat 571/2025). District-wise exam on 19 Sep, 17 Oct and 31 Oct 2026. Focuses on SCERT science, arithmetic, and Malayalam.",
                 "estimated_days": 45,
                 "syllabus_structure": [
                     {

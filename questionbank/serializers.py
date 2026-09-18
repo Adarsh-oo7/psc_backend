@@ -16,9 +16,20 @@ from institutes.models import Institute
 # ===================================================================
 
 class ExamSerializer(serializers.ModelSerializer):
+    exam_dates = serializers.SerializerMethodField()
+
     class Meta:
         model = Exam
-        fields = ['id', 'name', 'slug', 'year', 'duration_minutes', 'category_number', 'expected_exam_date', 'official_syllabus', 'question_pattern']
+        fields = [
+            'id', 'name', 'slug', 'year', 'duration_minutes', 'category_number',
+            'expected_exam_date', 'exam_dates', 'official_syllabus', 'question_pattern',
+        ]
+
+    def get_exam_dates(self, obj):
+        from .syllabus_db import SYLLABUS_DATABASE, resolve_exam_slug
+        slug_key = resolve_exam_slug(obj.slug or obj.name)
+        data = SYLLABUS_DATABASE.get(slug_key) or {}
+        return data.get('exam_dates') or None
 
 class ExamCategorySerializer(serializers.ModelSerializer):
     exams = ExamSerializer(many=True, read_only=True)
