@@ -79,3 +79,16 @@ class PaymentHistory(models.Model):
 
     def __str__(self):
         return f"Payment of {self.amount} by {self.user.username} ({self.status})"
+
+
+class ExamSetAttempt(models.Model):
+    """Counts completed practice / mock sets for a paid exam track such as VFA."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='exam_set_attempts')
+    exam_slug = models.SlugField(max_length=150, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.user_id} {self.exam_slug} {self.created_at:%Y-%m-%d}"

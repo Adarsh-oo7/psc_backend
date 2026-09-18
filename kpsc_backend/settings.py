@@ -167,6 +167,10 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 
 
+RAZORPAY_KEY_ID = env('RAZORPAY_KEY_ID', default='rzp_test_mockkey')
+RAZORPAY_KEY_SECRET = env('RAZORPAY_KEY_SECRET', default='mocksecret')
+RAZORPAY_WEBHOOK_SECRET = env('RAZORPAY_WEBHOOK_SECRET', default='mockwebhooksecret')
+
 ASGI_APPLICATION = "kpsc_backend.asgi.application"
 
 # In-memory channel layer for development (no Redis needed)

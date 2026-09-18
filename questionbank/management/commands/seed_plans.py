@@ -43,6 +43,20 @@ class Command(BaseCommand):
                     'ai_explanations': True,
                     'premium_mock_tests': True,
                     'friends_ranking': True,
+                    'vfa_unlock': True,
+                }
+            },
+            {
+                'name': 'VFA Full Unlock',
+                'slug': 'vfa-unlock',
+                'price': 29.00,
+                'interval': 'year',
+                'user_type': 'student',
+                'features': {
+                    'vfa_unlock': True,
+                    'compare_at': 499,
+                    'duration_days': 365,
+                    'premium_mock_tests': True,
                 }
             }
         ]
