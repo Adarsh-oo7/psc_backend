@@ -388,6 +388,36 @@ class GenerateMockExamView(views.APIView):
             access = vfa_access_payload(request.user)
             if not access['can_attempt']:
                 return vfa_paywall_response(request.user)
+
+        set_raw = (request.query_params.get('set') or '').strip()
+        if set_raw.isdigit():
+            from .models import ModelExam
+            set_no = int(set_raw)
+            paper = (
+                ModelExam.objects.filter(exam=exam, name__istartswith=f'Set {set_no}')
+                .prefetch_related('questions')
+                .first()
+            )
+            if not paper:
+                papers = list(ModelExam.objects.filter(exam=exam).prefetch_related('questions').order_by('id'))
+                if 1 <= set_no <= len(papers):
+                    paper = papers[set_no - 1]
+            if paper:
+                questions = [
+                    q for q in paper.questions.all()
+                    if getattr(q, 'is_public', True)
+                    and getattr(q, 'status', 'approved') == 'approved'
+                    and is_servable(q.text, q.options, q.correct_answer)
+                ][:100]
+                if questions:
+                    return Response({
+                        'exam_name': paper.name or f'{exam.name} — Set {set_no}',
+                        'duration_minutes': paper.duration_minutes or exam.duration_minutes,
+                        'questions': QuestionMockSerializer(
+                            questions, many=True, context={'request': request, 'shuffle': False}
+                        ).data,
+                    })
+
         syllabus_parts = exam.syllabus_parts.all()
         language = request.query_params.get('language')
         
