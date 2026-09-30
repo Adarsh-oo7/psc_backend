@@ -58,6 +58,7 @@ PRIORITY_EXAMS = [
         "level": "ITI",
         "duration_minutes": 90,
         "opportunity": "Shortlists appearing in Sept 2026",
+        "question_keywords": ["ohm", "volt", "ampere", "transformer", "motor", "circuit", "fuse", "earthing", "watt", "current", "resistance", "conductor", "electric"],
         "syllabus": [
             {"topic": "Basic Electricity", "marks": 15},
             {"topic": "Ohm's Law and Circuits", "marks": 15},
@@ -84,6 +85,7 @@ PRIORITY_EXAMS = [
         "level": "Nursing",
         "duration_minutes": 75,
         "opportunity": "Active district recruitment/shortlist",
+        "question_keywords": ["nurse", "anatomy", "physiology", "first aid", "vaccine", "patient", "hospital", "blood", "infection", "hygiene"],
         "syllabus": [
             {"topic": "Anatomy and Physiology", "marks": 20},
             {"topic": "Fundamentals of Nursing", "marks": 20},
@@ -108,6 +110,7 @@ PRIORITY_EXAMS = [
         "level": "SSLC",
         "duration_minutes": 75,
         "opportunity": "New 2026 notification categories",
+        "question_keywords": ["fire", "rescue", "extinguisher", "combustion", "hose", "ladder"],
         "syllabus": [
             {"topic": "History", "marks": 5},
             {"topic": "Geography", "marks": 5},
@@ -136,6 +139,7 @@ PRIORITY_EXAMS = [
         "level": "ITI",
         "duration_minutes": 90,
         "opportunity": "New 2026 notification categories",
+        "question_keywords": ["ohm", "volt", "ampere", "transformer", "motor", "circuit", "fuse", "earthing", "watt", "current", "resistance", "alternating", "magnet", "diode", "transistor", "generator", "conductor"],
         "syllabus": [
             {"topic": "Basic Electricity — Fundamentals, Resistance, Conductors, Wires", "marks": 10},
             {"topic": "Ohm's Law — Kirchhoff's Law, Temperature Effects, Cell Types", "marks": 10},
@@ -169,6 +173,7 @@ PRIORITY_EXAMS = [
         "level": "SSLC",
         "duration_minutes": 75,
         "opportunity": "New 2026 notification categories",
+        "question_keywords": ["forest", "wildlife", "sanctuary", "tiger", "elephant", "national park", "biodiversity"],
         "syllabus": [
             {"topic": "History", "marks": 8},
             {"topic": "Geography", "marks": 10},
@@ -194,6 +199,7 @@ PRIORITY_EXAMS = [
         "duration_minutes": 75,
         "opportunity": "Application window through 7 Oct 2026",
         "apply_by": "2026-10-07",
+        "question_keywords": ["laboratory", "beaker", "burette", "microscope", "acid", "base", "test tube", "pipette", "titration"],
         "syllabus": [
             {"topic": "Physics", "marks": 15},
             {"topic": "Chemistry", "marks": 15},
@@ -241,6 +247,7 @@ PRIORITY_EXAMS = [
         "duration_minutes": 75,
         "opportunity": "Application window through 7 Oct 2026",
         "apply_by": "2026-10-07",
+        "question_keywords": ["police", "constable", "ipc", "crpc", "band", "music", "rhythm"],
         "syllabus": [
             {"topic": "History", "marks": 8},
             {"topic": "Geography", "marks": 7},

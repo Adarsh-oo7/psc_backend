@@ -136,11 +136,48 @@ class Command(BaseCommand):
                     found.append(topic)
         return found
 
+    def _is_ok(self, question, keywords=None, require_keywords=False):
+        topic_name = (getattr(getattr(question, "topic", None), "name", "") or "").strip().lower()
+        if topic_name in {"new", "untitled", "test"}:
+            return False
+        if not is_servable(question.text, question.options, question.correct_answer):
+            return False
+        if not keywords:
+            return True
+        hay = f"{question.text} {topic_name}".lower()
+        hit = any(word in hay for word in keywords)
+        if require_keywords:
+            return hit
+        return True
+
     def _attach_questions(self, exam, spec, bank_size):
         exam.questions.clear()
         used = set()
         attached = 0
         total_marks = sum(row["marks"] for row in spec["syllabus"]) or 100
+        keywords = [word.lower() for word in (spec.get("question_keywords") or [])]
+
+        if keywords:
+            q_obj = Q()
+            for word in keywords:
+                q_obj |= Q(text__icontains=word) | Q(topic__name__icontains=word)
+            qs = (
+                Question.objects.filter(is_public=True, status="approved")
+                .filter(q_obj)
+                .exclude(topic__name__iexact="new")
+                .order_by("-times_answered", "id")
+            )
+            batch = []
+            for question in qs.iterator(chunk_size=200):
+                if len(batch) >= min(400, bank_size // 2):
+                    break
+                if not self._is_ok(question, keywords, require_keywords=True):
+                    continue
+                batch.append(question.id)
+                used.add(question.id)
+            if batch:
+                exam.questions.add(*batch)
+                attached += len(batch)
 
         for row in spec["syllabus"]:
             want = max(40, int(round(bank_size * row["marks"] / total_marks)))
@@ -154,13 +191,14 @@ class Command(BaseCommand):
                     topic__in=topics,
                 )
                 .exclude(id__in=used)
+                .exclude(topic__name__iexact="new")
                 .order_by("-times_answered", "id")
             )
             batch = []
             for question in qs.iterator(chunk_size=200):
                 if len(batch) >= want:
                     break
-                if not is_servable(question.text, question.options, question.correct_answer):
+                if not self._is_ok(question):
                     continue
                 batch.append(question.id)
                 used.add(question.id)
@@ -172,13 +210,14 @@ class Command(BaseCommand):
             extra = (
                 Question.objects.filter(is_public=True, status="approved")
                 .exclude(id__in=used)
+                .exclude(topic__name__iexact="new")
                 .order_by("-times_answered", "id")
             )
             fill = []
             for question in extra.iterator(chunk_size=300):
                 if attached + len(fill) >= bank_size:
                     break
-                if not is_servable(question.text, question.options, question.correct_answer):
+                if not self._is_ok(question):
                     continue
                 fill.append(question.id)
                 used.add(question.id)
