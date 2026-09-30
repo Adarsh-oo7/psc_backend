@@ -273,7 +273,198 @@ SYLLABUS_DATABASE = {
             {"topic": "English", "marks": 20},
             {"topic": "Malayalam", "marks": 10},
         ]
-    }
+    },
+
+    "special-branch-assistant": {
+        "name": "Special Branch Assistant",
+        "cat_no": "Various / 2026",
+        "exam_date": None,
+        "level": "SSLC",
+        "duration_minutes": 75,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "Malayalam / Tamil / Kannada",
+        "syllabus": [
+            {"topic": "History", "marks": 8},
+            {"topic": "Geography", "marks": 7},
+            {"topic": "Constitution and Polity", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 8},
+            {"topic": "Daily Current Affairs", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10},
+            {"topic": "Science", "marks": 7},
+            {"topic": "Special Branch and Police Topics", "marks": 20},
+        ],
+    },
+    "civil-excise-officer": {
+        "name": "Civil Excise Officer",
+        "cat_no": "Various / 2026",
+        "exam_date": None,
+        "level": "SSLC",
+        "duration_minutes": 75,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "Malayalam / Tamil / Kannada",
+        "syllabus": [
+            {"topic": "History", "marks": 8},
+            {"topic": "Geography", "marks": 7},
+            {"topic": "Constitution and Polity", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 8},
+            {"topic": "Daily Current Affairs", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10},
+            {"topic": "Science", "marks": 7},
+            {"topic": "Excise Special Topics", "marks": 20},
+        ],
+    },
+    "lineman": {
+        "name": "Lineman",
+        "cat_no": "Various / 2026",
+        "exam_date": None,
+        "level": "ITI",
+        "duration_minutes": 90,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "English / Malayalam",
+        "syllabus": [
+            {"topic": "Basic Electricity", "marks": 15},
+            {"topic": "Ohm's Law and Circuits", "marks": 15},
+            {"topic": "Overhead Lines and Safety", "marks": 15},
+            {"topic": "Transformers and Distribution", "marks": 15},
+            {"topic": "Instruments and Earthing", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+        ],
+    },
+    "nurse-grade-ii": {
+        "name": "Nurse Grade II",
+        "cat_no": "Various / 2026",
+        "exam_date": None,
+        "level": "Nursing",
+        "duration_minutes": 75,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "English / Malayalam",
+        "syllabus": [
+            {"topic": "Anatomy and Physiology", "marks": 20},
+            {"topic": "Fundamentals of Nursing", "marks": 20},
+            {"topic": "Community Health and First Aid", "marks": 15},
+            {"topic": "Biology and Public Health", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 10},
+            {"topic": "Daily Current Affairs", "marks": 5},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10},
+        ],
+    },
+    "electrician": {
+        "name": "Electrician",
+        "cat_no": "2026 notifications",
+        "exam_date": None,
+        "level": "ITI",
+        "duration_minutes": 90,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "English",
+        "syllabus": [
+            {"topic": "Basic Electricity — Fundamentals, Resistance, Conductors, Wires", "marks": 10},
+            {"topic": "Ohm's Law — Kirchhoff's Law, Temperature Effects, Cell Types", "marks": 10},
+            {"topic": "Magnetism — Properties, Electromagnetism, Fleming's Rules, Faraday's Laws", "marks": 10},
+            {"topic": "Alternating Current and Earthing — AC, Earthing, Wiring, Megger", "marks": 10},
+            {"topic": "DC Machines — Generators, DC Motors, Starters", "marks": 10},
+            {"topic": "AC Motors — Single & 3 Phase, DOL, Star-Delta Starters", "marks": 10},
+            {"topic": "Instruments and Transformers — Measuring Instruments, EMF Equation", "marks": 10},
+            {"topic": "Illumination and Electronics — Lamps, Semiconductors, Diodes, Transistors", "marks": 10},
+            {"topic": "Power Generation — Energy Sources, Types of Power Generation", "marks": 10},
+            {"topic": "Transmission and Distribution — AC vs DC Comparison", "marks": 10},
+        ],
+    },
+    "beat-forest-officer": {
+        "name": "Beat Forest Officer",
+        "cat_no": "2026 notifications",
+        "exam_date": None,
+        "level": "SSLC",
+        "duration_minutes": 75,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "Malayalam / Tamil / Kannada",
+        "syllabus": [
+            {"topic": "History", "marks": 8},
+            {"topic": "Geography", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 10},
+            {"topic": "Constitution and Polity", "marks": 8},
+            {"topic": "Daily Current Affairs", "marks": 10},
+            {"topic": "Science", "marks": 8},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 8},
+            {"topic": "Malayalam", "marks": 8},
+            {"topic": "Forest and Wildlife Special Topics", "marks": 20},
+        ],
+    },
+    "laboratory-attender": {
+        "name": "Laboratory Attender",
+        "cat_no": "2026",
+        "exam_date": None,
+        "level": "SSLC",
+        "duration_minutes": 75,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "English / Malayalam",
+        "syllabus": [
+            {"topic": "Physics", "marks": 15},
+            {"topic": "Chemistry", "marks": 15},
+            {"topic": "Biology and Public Health", "marks": 15},
+            {"topic": "Lab Safety and Instruments", "marks": 15},
+            {"topic": "Facts About Kerala", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Daily Current Affairs", "marks": 10},
+        ],
+    },
+    "assistant-project-engineer": {
+        "name": "Assistant Project Engineer",
+        "cat_no": "2026",
+        "exam_date": None,
+        "level": "Degree",
+        "duration_minutes": 75,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "English",
+        "syllabus": [
+            {"topic": "Engineering Maths", "marks": 20},
+            {"topic": "Physics", "marks": 10},
+            {"topic": "Basic Engineering and Drawing", "marks": 20},
+            {"topic": "Constitution and Polity", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 10},
+            {"topic": "Daily Current Affairs", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Computer", "marks": 10},
+        ],
+    },
+    "police-constable-band": {
+        "name": "Police Constable Band / Bugler / Drummer",
+        "cat_no": "2026",
+        "exam_date": None,
+        "level": "SSLC",
+        "duration_minutes": 75,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "Malayalam / Tamil / Kannada",
+        "syllabus": [
+            {"topic": "History", "marks": 8},
+            {"topic": "Geography", "marks": 7},
+            {"topic": "Constitution and Polity", "marks": 10},
+            {"topic": "Facts About Kerala", "marks": 8},
+            {"topic": "Daily Current Affairs", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 10},
+            {"topic": "Malayalam", "marks": 10},
+            {"topic": "Science", "marks": 7},
+            {"topic": "Band Music and Police Special Topics", "marks": 20},
+        ],
+    },
 }
 
 # Helpers to map loose user preferred exam strings to official keys
@@ -297,6 +488,24 @@ def resolve_exam_slug(exam_slug):
         return 'ksrtc-conductor'
     if 'fire' in normalized:
         return 'fire-and-rescue'
+    if 'special-branch' in normalized or 'special branch' in normalized:
+        return 'special-branch-assistant'
+    if 'civil-excise' in normalized or 'excise' in normalized:
+        return 'civil-excise-officer'
+    if 'lineman' in normalized:
+        return 'lineman'
+    if 'nurse' in normalized:
+        return 'nurse-grade-ii'
+    if 'electrician' in normalized:
+        return 'electrician'
+    if 'beat-forest' in normalized or 'beat forest' in normalized:
+        return 'beat-forest-officer'
+    if 'laboratory' in normalized or 'lab-attender' in normalized:
+        return 'laboratory-attender'
+    if 'project-engineer' in normalized or 'assistant-project' in normalized:
+        return 'assistant-project-engineer'
+    if 'constable-band' in normalized or 'bugler' in normalized or 'drummer' in normalized:
+        return 'police-constable-band'
     if 'university' in normalized:
         return 'university-assistant'
     if 'secretariat' in normalized:

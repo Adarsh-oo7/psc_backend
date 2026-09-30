@@ -37,6 +37,14 @@ class ExamCategorySerializer(serializers.ModelSerializer):
         model = ExamCategory
         fields = ['id', 'name', 'description', 'exams']
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        from .priority_exams import priority_rank
+        exams = data.get('exams') or []
+        exams.sort(key=lambda exam: (priority_rank(exam.get('slug')), exam.get('name') or ''))
+        data['exams'] = exams
+        return data
+
 class TopicSerializer(serializers.ModelSerializer):
     class Meta:
         model = Topic
@@ -226,7 +234,7 @@ class UserProfileSerializer(serializers.ModelSerializer):
 
             'preferred_exams', 'preferred_exams_ids', 'primary_exam_detail', 'primary_exam_id', 'bio',
             'is_content_creator', 'total_xp', 'level', 'current_streak', 
-            'longest_streak', 'last_active_date', 'streak_freeze_count'
+            'longest_streak', 'last_active_date', 'streak_freeze_count', 'practice_mode',
         ]
         read_only_fields = ['user', 'total_xp', 'level', 'current_streak', 'longest_streak', 'last_active_date', 'streak_freeze_count']
 
@@ -274,6 +282,23 @@ class UserProfileSerializer(serializers.ModelSerializer):
         if len(value) > 3:
             raise serializers.ValidationError("You can select a maximum of 3 preferred exams.")
         return value
+
+    def validate_phone_number(self, value):
+        from .auth import normalize_phone
+        if not value:
+            return ''
+        try:
+            return normalize_phone(value)
+        except ValueError as exc:
+            raise serializers.ValidationError(str(exc))
+
+    def validate_practice_mode(self, value):
+        if not value:
+            return 'full'
+        mode = str(value).strip().lower()
+        if mode not in ('full', 'focus'):
+            raise serializers.ValidationError('Choose full syllabus or focus areas.')
+        return mode
 
     def update(self, instance, validated_data):
         # --- CORRECTED: This logic now properly handles nested user updates ---
@@ -587,7 +612,7 @@ class CurrentAffairsSerializer(serializers.ModelSerializer):
     class Meta:
         model = CurrentAffairs
         fields = ['id', 'title', 'slug', 'content', 'category', 'publication_date',
-                  'psc_likelihood', 'ai_summary', 'source_url', 'mcq', 'created_at']
+                  'psc_likelihood', 'ai_summary', 'source_url', 'mcq', 'created_at', 'updated_at']
 
 
 from .models import StudyFeedCard
