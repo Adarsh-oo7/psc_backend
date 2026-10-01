@@ -204,6 +204,17 @@ class UserProfile(models.Model):
         blank=True,
         help_text="User's preferred language for practice and quizzes"
     )
+    PRACTICE_MODE_CHOICES = [
+        ('full', 'Full syllabus mix'),
+        ('focus', 'Focus weak / important sections'),
+    ]
+    practice_mode = models.CharField(
+        max_length=12,
+        choices=PRACTICE_MODE_CHOICES,
+        default='full',
+        blank=True,
+        help_text="full = mixed questions from the chosen exam; focus = more from weak or priority sections",
+    )
     bio = models.TextField(blank=True, help_text="A short description or bio for the user's public profile.")
     is_owner = models.BooleanField(default=False) # We will keep this for future institute features
 
@@ -401,6 +412,10 @@ class CurrentAffairs(models.Model):
     ai_summary = models.TextField(blank=True, help_text="AI-generated summary")
     source_url = models.URLField(max_length=500, blank=True, null=True, help_text="Credible news source URL")
     mcq = models.JSONField(blank=True, null=True, help_text="AI-generated PSC-style MCQ")
+    is_published = models.BooleanField(
+        default=True,
+        help_text="Unpublished items stay in the admin until someone checks the fact.",
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -582,4 +597,84 @@ class UserExamProgress(models.Model):
 
     def __str__(self):
         return f"{self.user.username} progress on {self.exam.name}"
-
+
+
+class GeminiIntakeSettings(models.Model):
+    """One row. The admin panel turns automatic question intake on or off."""
+
+    enabled = models.BooleanField(
+        default=False,
+        help_text="When this is off, the daily job does nothing.",
+    )
+    hold_for_review = models.BooleanField(
+        default=True,
+        help_text="Save new questions as pending. Students see them only after Approve.",
+    )
+    daily_accept_cap = models.PositiveIntegerField(
+        default=40,
+        help_text="Most questions saved in one day, across every Google project.",
+    )
+    requests_per_project_per_day = models.PositiveIntegerField(
+        default=30,
+        help_text="Our cap per Google project. The free tier allows more, but this keeps the run small.",
+    )
+    questions_per_request = models.PositiveIntegerField(
+        default=5,
+        help_text="How many questions to ask for in one Gemini call.",
+    )
+    max_calls_per_run = models.PositiveIntegerField(
+        default=12,
+        help_text="Stop after this many Gemini calls, even if the daily cap is not full.",
+    )
+    run_current_affairs = models.BooleanField(
+        default=True,
+        help_text="Also ask for today's current affairs. Those stay unpublished until an admin ticks them.",
+    )
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_report = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Gemini intake"
+        verbose_name_plural = "Gemini intake"
+
+    def __str__(self):
+        state = "On" if self.enabled else "Off"
+        return f"Gemini intake ({state})"
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(
+            pk=1,
+            defaults={
+                "enabled": True,
+                "hold_for_review": True,
+                "daily_accept_cap": 40,
+                "requests_per_project_per_day": 30,
+                "questions_per_request": 5,
+                "max_calls_per_run": 12,
+                "run_current_affairs": True,
+            },
+        )
+        return obj
+
+
+class GeminiProjectUsage(models.Model):
+    """How many free-tier calls one Google project used on one date. No API key is stored."""
+
+    project_number = models.CharField(max_length=32)
+    day = models.DateField()
+    requests = models.PositiveIntegerField(default=0)
+    accepted = models.PositiveIntegerField(default=0)
+    rejected = models.PositiveIntegerField(default=0)
+    duplicates = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        unique_together = ("project_number", "day")
+        ordering = ["-day", "project_number"]
+        verbose_name = "Gemini project usage"
+        verbose_name_plural = "Gemini project usage"
+
+    def __str__(self):
+        return f"{self.project_number} on {self.day}: {self.requests} calls, {self.accepted} kept"
+

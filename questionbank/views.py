@@ -1853,7 +1853,7 @@ class PublicCurrentAffairsListView(generics.ListAPIView):
     def get_queryset(self):
         from django.utils import timezone
         from datetime import timedelta
-        qs = CurrentAffairs.objects.all()
+        qs = CurrentAffairs.objects.filter(is_published=True)
         date = self.request.query_params.get('date')
         if date:
             return qs.filter(publication_date=date)
@@ -1864,7 +1864,7 @@ class PublicCurrentAffairsDetailView(generics.RetrieveAPIView):
     """
     Public SEO endpoint to fetch a single current affair entry by slug.
     """
-    queryset = CurrentAffairs.objects.all()
+    queryset = CurrentAffairs.objects.filter(is_published=True)
     serializer_class = CurrentAffairsSerializer
     permission_classes = [AllowAny]
     lookup_field = 'slug'
@@ -1914,7 +1914,7 @@ def seed_feed_cards():
             if ca_id:
                 existing_ca_ids.append(ca_id)
                 
-    ca_items = CurrentAffairs.objects.exclude(id__in=existing_ca_ids).order_by('?')[:10]
+    ca_items = CurrentAffairs.objects.filter(is_published=True).exclude(id__in=existing_ca_ids).order_by('?')[:10]
     for ca in ca_items:
         content = {
             'ca_id': ca.id,

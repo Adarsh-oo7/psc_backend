@@ -70,6 +70,7 @@ class QuestionAdmin(admin.ModelAdmin):
                 question.status = 'approved'
                 question.verified = True
                 question.is_verified = True
+                question.is_public = True
                 question.save()
                 count += 1
                 
@@ -1257,7 +1258,32 @@ class ExamAnnouncementAdmin(admin.ModelAdmin):
     search_fields = ('title',)
 
 
-from .models import StudyFeedCard, UserFeedView, AIExplanationCache
+from .models import StudyFeedCard, UserFeedView, AIExplanationCache, CurrentAffairs
+
+@admin.register(CurrentAffairs)
+class CurrentAffairsAdmin(admin.ModelAdmin):
+    list_display = ('title', 'category', 'publication_date', 'psc_likelihood', 'is_published')
+    list_filter = ('category', 'psc_likelihood', 'publication_date', 'is_published')
+    search_fields = ('title', 'content')
+    date_hierarchy = 'publication_date'
+    actions = ['publish_affairs']
+
+    @admin.action(description="Publish selected current affairs and their questions")
+    def publish_affairs(self, request, queryset):
+        from questionbank.current_affairs_quiz import ensure_question_for_ca
+        published = 0
+        for item in queryset:
+            item.is_published = True
+            item.save(update_fields=['is_published'])
+            question = ensure_question_for_ca(item)
+            if question and question.status != 'approved':
+                question.status = 'approved'
+                question.is_public = True
+                question.verified = True
+                question.is_verified = True
+                question.save()
+            published += 1
+        self.message_user(request, f"Published {published} current-affairs items.")
 
 @admin.register(StudyFeedCard)
 class StudyFeedCardAdmin(admin.ModelAdmin):
@@ -1321,3 +1347,66 @@ class PracticeSessionAdmin(admin.ModelAdmin):
     @admin.display(description='Score')
     def score_display(self, obj):
         return f"{obj.score_percent}%"
+
+
+from .models import GeminiIntakeSettings, GeminiProjectUsage
+
+
+@admin.register(GeminiIntakeSettings)
+class GeminiIntakeSettingsAdmin(admin.ModelAdmin):
+    list_display = (
+        'enabled', 'hold_for_review', 'daily_accept_cap',
+        'requests_per_project_per_day', 'max_calls_per_run', 'last_run_at',
+    )
+    readonly_fields = ('last_run_at', 'last_report')
+    actions = ['run_intake']
+    fieldsets = (
+        ('Switch', {'fields': ('enabled', 'hold_for_review', 'run_current_affairs')}),
+        ('How much to ask Google', {
+            'fields': (
+                'daily_accept_cap', 'requests_per_project_per_day',
+                'questions_per_request', 'max_calls_per_run',
+            ),
+            'description': (
+                "Each Google project has its own free quota. A second key in the same "
+                "project does not add more. Google does not publish one fixed free number; "
+                "Flash is commonly about 10 requests a minute and about 1,500 requests a day, "
+                "resetting at midnight Pacific time (about 12:30 in the afternoon IST). "
+                "These fields stay far below that. Select this row and choose "
+                "'Run intake now', or leave it on and the server runs it every day at 1:30 PM IST."
+            ),
+        }),
+        ('Last run', {'fields': ('last_run_at', 'last_report')}),
+    )
+
+    def has_add_permission(self, request):
+        return not GeminiIntakeSettings.objects.exists()
+
+    @admin.action(description="Run intake now")
+    def run_intake(self, request, queryset):
+        import subprocess
+        import sys
+        from django.conf import settings
+        subprocess.Popen(
+            [sys.executable, "manage.py", "intake_kpsc_questions"],
+            cwd=str(settings.BASE_DIR),
+            start_new_session=True,
+        )
+        self.message_user(
+            request,
+            "Intake started. Refresh Gemini project usage in a few minutes for the counts. "
+            "New questions stay pending until you approve them.",
+        )
+
+
+@admin.register(GeminiProjectUsage)
+class GeminiProjectUsageAdmin(admin.ModelAdmin):
+    list_display = ('day', 'project_number', 'requests', 'accepted', 'rejected', 'duplicates', 'last_error')
+    list_filter = ('day', 'project_number')
+    readonly_fields = ('project_number', 'day', 'requests', 'accepted', 'rejected', 'duplicates', 'last_error')
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
