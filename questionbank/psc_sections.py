@@ -178,8 +178,19 @@ def exam_blueprint(exam=None) -> Dict[str, Any]:
 
 def assign_topic_to_exam_section(topic_name: str, syllabus_rows: List[Dict[str, Any]], sub_topic: str = '') -> Optional[str]:
     """Return the official syllabus topic title this DB topic belongs to."""
+    exam_keys = [(section_key(row.get('topic', '')), row.get('topic', '')) for row in syllabus_rows if row.get('topic')]
+    names = [section_key(topic_name), section_key(sub_topic)]
+    names = [name for name in names if name]
+    # Trade and lab papers store the syllabus title as the topic name.
+    # Match that before the general classifier, which otherwise files unknown
+    # titles under Facts About India.
+    for key, title in sorted(exam_keys, key=lambda item: len(item[0]), reverse=True):
+        if not key:
+            continue
+        for name in names:
+            if name == key or (len(key) >= 12 and key in name):
+                return title
     canonical = classify_topic(topic_name, sub_topic)
-    exam_keys = [(section_key(row.get('topic', '')), row.get('topic', '')) for row in syllabus_rows]
     for key, title in exam_keys:
         if key == canonical:
             return title

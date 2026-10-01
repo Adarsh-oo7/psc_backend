@@ -187,9 +187,9 @@ class QuestionEngine:
         if filters.get('exclude_ids'):
             queryset = queryset.exclude(id__in=filters['exclude_ids'])
         if filters.get('section'):
-            from .models import Topic
             from .psc_sections import assign_topic_to_exam_section, exam_blueprint, section_key, user_exam
             section = section_key(str(filters['section']))
+            clean_section = section.replace('-', ' ')
             exam = None
             if user and getattr(user, 'is_authenticated', False):
                 exam = user_exam(user)
@@ -199,14 +199,27 @@ class QuestionEngine:
                 assigned = assign_topic_to_exam_section(topic.name, blueprint['syllabus'])
                 if assigned and section_key(assigned) == section:
                     matching_ids.append(topic.id)
+            titles = [
+                row.get('topic')
+                for row in blueprint['syllabus']
+                if row.get('topic') and section_key(row.get('topic')) == section
+            ]
+            section_q = Q(topic__name__icontains=clean_section) | Q(sub_topic__icontains=clean_section)
+            for title in titles:
+                section_q |= Q(topic__name__iexact=title) | Q(sub_topic__iexact=title)
             if matching_ids:
-                queryset = queryset.filter(
-                    Q(topic_id__in=matching_ids) | Q(sub_topic__icontains=filters['section'])
-                )
+                section_q |= Q(topic_id__in=matching_ids)
+            scoped = queryset.filter(section_q)
+            if scoped.exists():
+                queryset = scoped
             else:
-                queryset = queryset.filter(
-                    Q(topic__name__icontains=filters['section']) | Q(sub_topic__icontains=filters['section'])
-                )
+                # The student opened this section directly. Serve it even when
+                # the current exam filter did not include those questions.
+                opened = Question.objects.filter(
+                    base_query, status='approved', is_public=True
+                ).filter(section_q)
+                if opened.exists():
+                    queryset = opened.distinct()
 
         # Fall back to user's preferred language if no explicit language filter is provided
         language_filter = filters.get('language')
@@ -214,8 +227,22 @@ class QuestionEngine:
             language_filter = getattr(user.userprofile, 'preferred_language', None)
             
         if language_filter:
-            queryset = queryset.filter(language=language_filter)
+            localized = queryset.filter(language=language_filter)
+            if localized.exists():
+                queryset = localized
 
+        explicit_scope = bool(
+            topic_query or filters.get('topic_ids') or filters.get('section')
+        )
+        mode = str(filters.get('practice_mode') or '').strip().lower()
+        if not mode and user and getattr(user, 'is_authenticated', False) and hasattr(user, 'userprofile'):
+            mode = getattr(user.userprofile, 'practice_mode', 'full') or 'full'
+        if not explicit_scope and mode == 'focus':
+            focus_ids = QuestionEngine._focus_topic_ids(user)
+            if focus_ids:
+                focused = queryset.filter(topic_id__in=focus_ids)
+                if focused.exists():
+                    queryset = focused
 
         if user and getattr(user, 'is_authenticated', False):
             if limit:
@@ -257,6 +284,24 @@ class QuestionEngine:
             raw_ids = list(queryset.order_by('?').values_list('id', flat=True)[: max(limit * 2, limit)])
             return QuestionEngine._ordered_qs(QuestionEngine._servable_ids(raw_ids)[:limit])
         return queryset.order_by('?')
+
+    @staticmethod
+    def _focus_topic_ids(user):
+        """Weak topics first; fall back to topics the student marked as preferred."""
+        if not user or not getattr(user, 'is_authenticated', False):
+            return []
+        weak_ids = list(
+            TopicProgress.objects.filter(
+                user=user,
+                total_attempted__gte=5,
+                total_correct__lt=F('total_attempted') * 0.5,
+            ).values_list('topic_id', flat=True)
+        )
+        if weak_ids:
+            return weak_ids
+        if hasattr(user, 'userprofile'):
+            return list(user.userprofile.preferred_topics.values_list('id', flat=True))
+        return []
 
     @staticmethod
     def get_weak_area_questions(user, limit: int = 20, language: str = None):
