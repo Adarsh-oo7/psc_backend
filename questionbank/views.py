@@ -3057,6 +3057,7 @@ class MasterStudyPlanView(views.APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, exam_id=None):
+        from .models import MasterStudyPlan
         from .serializers import MasterStudyPlanSerializer
         try:
             exam = None
@@ -3108,6 +3109,7 @@ class UserExamProgressView(views.APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, exam_id=None):
+        from .models import UserExamProgress
         from .serializers import UserExamProgressSerializer
         try:
             if not request.user.is_authenticated or not hasattr(request.user, 'userprofile'):
@@ -3136,6 +3138,7 @@ class UserExamProgressView(views.APIView):
             return Response({'completed_topic_ids': [], 'completed_mock_ids': [], 'completed_pyq_ids': []})
 
     def post(self, request, exam_id=None):
+        from .models import UserExamProgress
         from .serializers import UserExamProgressSerializer
         try:
             if not request.user.is_authenticated or not hasattr(request.user, 'userprofile'):
