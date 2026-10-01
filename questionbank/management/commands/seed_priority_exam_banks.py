@@ -147,11 +147,13 @@ class Command(BaseCommand):
         topic_name = (getattr(getattr(question, "topic", None), "name", "") or "").strip().lower()
         if topic_name in {"new", "untitled", "test"}:
             return False
+        hay = f"{question.text} {topic_name}".lower()
+        if any(phrase in hay for phrase in ("search engine", "software engineering", "acid properties", "uml stand")):
+            return False
         if not is_servable(question.text, question.options, question.correct_answer):
             return False
         if not keywords:
             return True
-        hay = f"{question.text} {topic_name}".lower()
         hit = any(word in hay for word in keywords)
         if require_keywords:
             return hit
@@ -214,12 +216,19 @@ class Command(BaseCommand):
                 attached += len(batch)
 
         if attached < bank_size:
+            gk_topics = []
+            seen_topics = set()
+            for name in ("Facts About Kerala", "Maths", "English", "Malayalam", "History", "Geography", "Constitution and Polity", "Daily Current Affairs"):
+                for topic in _find_topics(name):
+                    if topic.id not in seen_topics:
+                        seen_topics.add(topic.id)
+                        gk_topics.append(topic)
             extra = (
-                Question.objects.filter(is_public=True, status="approved")
+                Question.objects.filter(is_public=True, status="approved", topic__in=gk_topics)
                 .exclude(id__in=used)
                 .exclude(topic__name__iexact="new")
                 .order_by("-times_answered", "id")
-            )
+            ) if gk_topics else Question.objects.none()
             fill = []
             for question in extra.iterator(chunk_size=300):
                 if attached + len(fill) >= bank_size:

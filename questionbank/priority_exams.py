@@ -41,7 +41,7 @@ PRIORITY_EXAMS = [
         "duration_minutes": 90,
         "opportunity": "OMR exam 3 October 2026",
         "apply_by": None,
-        "question_keywords": ["microscope", "centrifuge", "titration", "pipette", "reagent", "bacteria", "cell", "acid", "alkali", "laboratory", "mitosis", "enzyme"],
+        "question_keywords": ["microscope", "centrifuge", "titration", "pipette", "reagent", "bacteria", "alkali", "laboratory", "mitosis", "enzyme", "beaker", "bunsen"],
         "syllabus": [
             {"topic": "Lab Safety and Instruments", "marks": 20},
             {"topic": "Physics", "marks": 20},
@@ -65,7 +65,7 @@ PRIORITY_EXAMS = [
         "level": "ITI",
         "duration_minutes": 90,
         "opportunity": "Online exam 13 October 2026",
-        "question_keywords": ["engine", "piston", "clutch", "brake", "gear", "carburettor", "carburetor", "diesel", "petrol", "steering", "lubricant", "spark", "crankshaft", "injector", "alternator"],
+        "question_keywords": ["piston", "clutch", "brake", "carburettor", "carburetor", "diesel", "petrol", "steering", "lubricant", "crankshaft", "injector", "alternator", "gearbox", "shock absorber"],
         "syllabus": [
             {"topic": "Engine and Fuel System", "marks": 20},
             {"topic": "Brake Clutch and Transmission", "marks": 20},
