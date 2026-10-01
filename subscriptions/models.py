@@ -66,6 +66,7 @@ class PaymentHistory(models.Model):
         ('success', 'Success'),
         ('failed', 'Failed'),
         ('pending', 'Pending'),
+        ('refunded', 'Refunded'),
     ]
 
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='subscription_payments')

@@ -16,6 +16,13 @@ def is_vfa_exam(exam=None, slug='', name=''):
 def has_vfa_unlock(user):
     if not user or not getattr(user, 'is_authenticated', False):
         return False
+    from .models import PaymentHistory
+    if PaymentHistory.objects.filter(
+        user=user,
+        status='success',
+        subscription__plan__slug=VFA_PLAN_SLUG,
+    ).exists():
+        return True
     now = timezone.now()
     subs = Subscription.objects.filter(
         user=user,
