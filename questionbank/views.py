@@ -408,7 +408,9 @@ class GenerateMockExamView(views.APIView):
                     if getattr(q, 'is_public', True)
                     and getattr(q, 'status', 'approved') == 'approved'
                     and is_servable(q.text, q.options, q.correct_answer)
-                ][:100]
+                ]
+                questions.sort(key=lambda q: (0 if 'syllabus-2026' in (q.tags or []) else 1, q.id))
+                questions = questions[:100]
                 if questions:
                     return Response({
                         'exam_name': paper.name or f'{exam.name} — Set {set_no}',
