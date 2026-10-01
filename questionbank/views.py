@@ -295,6 +295,9 @@ class QuestionListView(generics.ListAPIView):
         section = self.request.query_params.get('section')
         if section:
             filters['section'] = section
+        subdivision = self.request.query_params.get('subdivision')
+        if subdivision:
+            filters['subdivision'] = subdivision
 
         practice_mode = self.request.query_params.get('practice_mode')
         if practice_mode in ('full', 'focus'):
@@ -2668,7 +2671,7 @@ class SyllabusSectionsView(views.APIView):
 
     def get(self, request):
         from .psc_sections import (
-            assign_topic_to_exam_section, exam_blueprint, section_meta, user_exam,
+            assign_topic_to_exam_section, exam_blueprint, section_meta, summarize_section, user_exam,
         )
         from .models import TopicProgress
 
@@ -2689,6 +2692,13 @@ class SyllabusSectionsView(views.APIView):
             .annotate(c=Count('id'))
             .values_list('topic_id', 'c')
         )
+
+        question_groups = [
+            (row['topic_id'], row['topic__name'], row['sub_topic'], row['c'])
+            for row in Question.objects.filter(
+                status='approved', is_public=True, institute__isnull=True
+            ).values('topic_id', 'topic__name', 'sub_topic').annotate(c=Count('id'))
+        ]
 
         grouped = {row['topic']: [] for row in blueprint['syllabus']}
         for topic in topics:
@@ -2726,9 +2736,12 @@ class SyllabusSectionsView(views.APIView):
             elif attempted > 0:
                 status = 'learning'
             meta = section_meta(title, row.get('marks') or 0)
+            summary = summarize_section(question_groups, title, blueprint['syllabus'])
             impact = round((meta['marks'] or 0) * (1 - (accuracy / 100.0 if attempted else 1)), 1)
             sections.append({
                 **meta,
+                'question_count': summary['question_count'],
+                'subdivisions': summary['subdivisions'],
                 'attempted': attempted,
                 'correct': correct,
                 'accuracy': accuracy,

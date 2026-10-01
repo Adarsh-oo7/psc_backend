@@ -187,28 +187,35 @@ class QuestionEngine:
         if filters.get('exclude_ids'):
             queryset = queryset.exclude(id__in=filters['exclude_ids'])
         if filters.get('section'):
-            from .psc_sections import assign_topic_to_exam_section, exam_blueprint, section_key, user_exam
+            from .psc_sections import exam_blueprint, section_key, section_pairs, user_exam
             section = section_key(str(filters['section']))
-            clean_section = section.replace('-', ' ')
             exam = None
             if user and getattr(user, 'is_authenticated', False):
                 exam = user_exam(user)
             blueprint = exam_blueprint(exam)
-            matching_ids = []
-            for topic in Topic.objects.all().only('id', 'name'):
-                assigned = assign_topic_to_exam_section(topic.name, blueprint['syllabus'])
-                if assigned and section_key(assigned) == section:
-                    matching_ids.append(topic.id)
             titles = [
                 row.get('topic')
                 for row in blueprint['syllabus']
                 if row.get('topic') and section_key(row.get('topic')) == section
             ]
-            section_q = Q(topic__name__icontains=clean_section) | Q(sub_topic__icontains=clean_section)
-            for title in titles:
-                section_q |= Q(topic__name__iexact=title) | Q(sub_topic__iexact=title)
-            if matching_ids:
-                section_q |= Q(topic_id__in=matching_ids)
+            title = titles[0] if titles else section.replace('-', ' ')
+            groups = Question.objects.filter(
+                status='approved', is_public=True
+            ).values_list('topic_id', 'topic__name', 'sub_topic').distinct()
+            pairs = section_pairs(
+                groups, title, blueprint['syllabus'], filters.get('subdivision') or ''
+            )
+            section_q = Q()
+            by_topic = {}
+            for topic_id, sub in pairs:
+                by_topic.setdefault(topic_id, set()).add(sub or '')
+            for topic_id, subs in by_topic.items():
+                topic_q = Q(topic_id=topic_id, sub_topic__in=list(subs))
+                if '' in subs:
+                    topic_q |= Q(topic_id=topic_id, sub_topic__isnull=True)
+                section_q |= topic_q
+            if not section_q:
+                section_q = Q(topic__name__iexact=title) | Q(sub_topic__iexact=title)
             scoped = queryset.filter(section_q)
             if scoped.exists():
                 queryset = scoped

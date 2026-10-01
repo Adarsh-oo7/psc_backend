@@ -2,8 +2,9 @@ from django.test import SimpleTestCase, TestCase
 from django.contrib.auth.models import User
 from questionbank.kpsc_format import (
     normalize_options, normalize_correct_answer, clean_option_text,
-    clean_question_text, is_servable, servability_issues, format_question_payload,
+    clean_question_text, is_servable, servability_issues,     format_question_payload,
     logical_answer_mismatch, shuffle_options, grade_selected_option, interleave_reviews,
+    repair_known_unrelated_question,
 )
 from questionbank.models import Question, Topic
 from questionbank.engine import QuestionEngine
@@ -25,6 +26,161 @@ class KpscFormatTests(SimpleTestCase):
             'A:3 B:4 C:1 D:2',
         )
         self.assertEqual(clean_option_text('Answer: RNA'), 'RNA')
+        self.assertEqual(
+            clean_option_text('Nehru Commission [e] None of these'),
+            'Nehru Commission',
+        )
+        self.assertEqual(
+            clean_option_text('615 രൂപ ചെയ്യുന്ന വിധം A = P(1 + R/100)ⁿ = 6615'),
+            '615 രൂപ',
+        )
+        self.assertEqual(
+            clean_option_text('Aluminium [Junior Asst. Cashier-2015]'),
+            'Aluminium',
+        )
+        self.assertEqual(clean_option_text('[ML2T–2]'), '[ML2T–2]')
+
+    def test_glued_fifth_option_is_stripped_in_payload(self):
+        payload = format_question_payload(
+            'In 1927, the British Government appointed the Indian Statutory Commission also known as',
+            {
+                'A': 'Simon Commission',
+                'B': 'Mountbatten Commission',
+                'C': 'Sedition Committee',
+                'D': 'Nehru Commission [e] None of these',
+            },
+            'A',
+        )
+        self.assertEqual(payload['options']['D'], 'Nehru Commission')
+        self.assertTrue(is_servable(payload['text'], payload['options'], payload['correct_answer']))
+
+    def test_aruna_asaf_ali_mixed_leftovers_are_repaired(self):
+        stem = 'During the freedom struggle, Aruna Asaf Ali was a major woman organizer of underground activity in?'
+        broken = {
+            'A': 'The Pottery',
+            'B': 'Rajasthan',
+            'C': 'Quit India Movement',
+            'D': 'Moradabad',
+        }
+        self.assertIn('unrelated_options', servability_issues(stem, broken, 'C'))
+
+        class FakeQuestion:
+            text = stem
+            options = broken
+            correct_answer = 'C'
+            explanation = ''
+            is_public = True
+
+        question = FakeQuestion()
+        self.assertTrue(repair_known_unrelated_question(question))
+        self.assertEqual(question.options['C'], 'Quit India Movement')
+        self.assertEqual(question.correct_answer, 'C')
+        self.assertNotIn('Pottery', question.options.values())
+        self.assertTrue(is_servable(question.text, question.options, question.correct_answer))
+
+    def test_alexander_tutor_leftovers_are_repaired(self):
+        stem = 'Who was the tutor of Alexander the Great ?'
+        broken = {
+            'A': 'The Pottery',
+            'B': 'Aristotle',
+            'C': 'Mystical insight by modern seers',
+            'D': 'Fairly egalitarian',
+        }
+        self.assertIn('unrelated_options', servability_issues(stem, broken, 'B'))
+
+        class FakeQuestion:
+            text = stem
+            options = broken
+            correct_answer = 'B'
+            explanation = ''
+            is_public = True
+
+        question = FakeQuestion()
+        self.assertTrue(repair_known_unrelated_question(question))
+        self.assertEqual(question.options['B'], 'Aristotle')
+        self.assertEqual(set(question.options.values()), {'Plato', 'Aristotle', 'Socrates', 'Pythagoras'})
+        self.assertTrue(is_servable(question.text, question.options, question.correct_answer))
+
+    def test_who_wrote_hind_swaraj_is_gandhi_not_book_titles(self):
+        class FakeQuestion:
+            text = "Who wrote the famous work 'Hind Swaraj'?"
+            options = {'A': 'Buffalo', 'B': 'Pulakesin II', 'C': 'Hind Swaraj', 'D': 'Kakatiya'}
+            correct_answer = 'C'
+            explanation = ''
+            is_public = True
+        question = FakeQuestion()
+        self.assertTrue(repair_known_unrelated_question(question))
+        self.assertEqual(question.options['A'], 'Mahatma Gandhi')
+        self.assertEqual(question.correct_answer, 'A')
+        self.assertNotIn('Hind Swaraj', question.options.values())
+
+    def test_tilak_father_of_unrest_is_repaired(self):
+        stem = "Whom the British called 'The father of Indian unrest'"
+        broken = {
+            'A': 'Dvarasamudhra',
+            'B': 'Bal Gangadhar Tilak',
+            'C': 'Bhutan',
+            'D': 'Pavapuri',
+        }
+        self.assertIn('unrelated_options', servability_issues(stem, broken, 'B'))
+        class FakeQuestion:
+            text = stem
+            options = broken
+            correct_answer = 'B'
+            explanation = ''
+            is_public = True
+        question = FakeQuestion()
+        self.assertTrue(repair_known_unrelated_question(question))
+        self.assertEqual(question.options['B'], 'Bal Gangadhar Tilak')
+        self.assertTrue(is_servable(question.text, question.options, question.correct_answer))
+
+    def test_non_who_history_ivc_leftovers_are_unservable(self):
+        issues = servability_issues(
+            'Which war was concluded by the Treaty of Salbai(1782)?',
+            {
+                'A': 'First Anglo-Maratha War',
+                'B': 'Kharosthi',
+                'C': 'Krakuchanda',
+                'D': 'West : Makran Coast of Baluchistan',
+            },
+            'A',
+        )
+        self.assertIn('unrelated_options', issues)
+
+    def test_harappan_source_options_stay_servable(self):
+        self.assertTrue(is_servable(
+            'The Social System of Harappan was',
+            {
+                'A': 'Fairly egalitarian',
+                'B': 'Slave-Labour based',
+                'C': 'Colour based',
+                'D': 'Caste based',
+            },
+            'A',
+        ))
+        self.assertTrue(is_servable(
+            'The Indus Valley Civilization has been assigned the period 2500-1800 BC on the basis of',
+            {
+                'A': 'Mystical insight by modern seers',
+                'B': 'Marking on seals',
+                'C': 'Radio Carbon dating',
+                'D': 'Travellers written accounts',
+            },
+            'C',
+        ))
+
+    def test_article_clause_mixed_with_people_is_unservable(self):
+        issues = servability_issues(
+            'The only person to become the president of India who had been defeated in a Presidential previous election',
+            {
+                'A': '51 A(f)',
+                'B': 'Lions Club',
+                'C': 'Neelam Sanjiva Reddy',
+                'D': 'Bhutan and Nepal',
+            },
+            'C',
+        )
+        self.assertIn('unrelated_options', issues)
 
     def test_splits_mashed_questions(self):
         text = 'ശ്രീനാരായണ ഗുരു സമാധിയായ വർഷം ഏത്?31. ശ്രീനാരായണ ഗുരു രമണ മഹർഷിയെ കണ്ടുമുട്ടിയ വർഷം ഏത്?'
@@ -187,6 +343,63 @@ class KpscFormatTests(SimpleTestCase):
             'A',
         ))
 
+    def test_antibiotics_question_rejects_physics_leftovers_and_repairs(self):
+        stem = 'The drugs used in the treatment & prevention of microbial infections are known as ___'
+        broken = {
+            'A': 'Antibiotics',
+            'B': 'Super conductivity',
+            'C': 'absorption of signal in air',
+            'D': 'Travirens',
+        }
+        self.assertIn('unrelated_options', servability_issues(stem, broken, 'A'))
+        self.assertFalse(is_servable(stem, broken, 'A'))
+
+        class FakeQuestion:
+            text = stem
+            options = broken
+            correct_answer = 'A'
+            explanation = ''
+            is_public = True
+
+        question = FakeQuestion()
+        self.assertTrue(repair_known_unrelated_question(question))
+        self.assertEqual(question.options['A'], 'Antibiotics')
+        self.assertEqual(question.options['B'], 'Antiseptics')
+        self.assertEqual(question.options['C'], 'Analgesics')
+        self.assertEqual(question.options['D'], 'Antipyretics')
+        self.assertTrue(is_servable(question.text, question.options, question.correct_answer))
+
+        self.assertTrue(is_servable(
+            'Television signal cannot be received generally beyond a particular distance due to',
+            {
+                'A': 'Curvature of the earth',
+                'B': 'Weakness of antenna',
+                'C': 'Weakness of signal',
+                'D': 'absorption of signal in air',
+            },
+            'A',
+        ))
+        self.assertIn('unrelated_options', servability_issues(
+            'Gir National Park is situated in',
+            {
+                'A': 'Vainganga',
+                'B': 'Gujarat',
+                'C': 'Pulicat Lake',
+                'D': 'Antibiotics',
+            },
+            'B',
+        ))
+        self.assertTrue(is_servable(
+            'Which is a Universal gate?',
+            {'A': 'AND', 'B': 'NOR', 'C': 'XOR', 'D': 'NOT'},
+            'B',
+        ))
+        self.assertTrue(is_servable(
+            'The students of our school _______ given a challenging task yesterday.',
+            {'A': 'were', 'B': 'was', 'C': 'have been', 'D': 'none of these'},
+            'A',
+        ))
+
     def test_shuffle_is_stable_and_grades_the_shown_letter(self):
         opts = {'A': 'Periyar', 'B': 'Bharathapuzha', 'C': 'Pamba', 'D': 'Chaliyar'}
         first, letter1 = shuffle_options(opts, 'A', user_id=7, question_id=42, salt=0)
@@ -237,6 +450,44 @@ class KpscFormatTests(SimpleTestCase):
         self.assertEqual(assign_topic_to_exam_section('Physics — Heat', ldc), 'Science')
         self.assertEqual(assign_topic_to_exam_section('Indian History', ldc), 'Facts About India')
         self.assertEqual(assign_topic_to_exam_section('Percentages', ldc), 'Maths')
+        lab = [
+            {'topic': 'Lab Safety and Instruments', 'marks': 20},
+            {'topic': 'Physics', 'marks': 20},
+            {'topic': 'Facts About Kerala', 'marks': 10},
+        ]
+        self.assertEqual(
+            assign_topic_to_exam_section('Lab Safety and Instruments', lab),
+            'Lab Safety and Instruments',
+        )
+        self.assertEqual(assign_topic_to_exam_section('Physics', lab), 'Physics')
+
+    def test_subdivision_questions_stay_inside_the_parent_subject(self):
+        from questionbank.psc_sections import subdivision_for, summarize_section
+        lab = [
+            {'topic': 'Chemistry', 'marks': 15},
+            {'topic': 'Physics', 'marks': 15},
+            {'topic': 'History', 'marks': 10},
+        ]
+        self.assertEqual(
+            subdivision_for('Chemistry — Acids, Bases & Salts', '', 'Chemistry'),
+            ('acids-bases-and-salts', 'Acids, Bases and Salts'),
+        )
+        self.assertEqual(subdivision_for('Chemistry', 'Chemistry', 'Chemistry')[0], 'general')
+        groups = [
+            (1, 'Chemistry', 'Chemistry', 27),
+            (2, 'Chemistry — Acids, Bases & Salts', 'Acids', 4),
+            (3, 'Physics — Light, Sound & Optics', 'Physics', 6),
+            (4, 'History', 'History', 10),
+        ]
+        chemistry = summarize_section(groups, 'Chemistry', lab)
+        keys = [row['key'] for row in chemistry['subdivisions']]
+        self.assertEqual(chemistry['question_count'], 31)
+        self.assertIn('acids-bases-and-salts', keys)
+        self.assertIn('general', keys)
+        self.assertNotIn('light-and-sound', keys)
+        physics = summarize_section(groups, 'Physics', lab)
+        self.assertEqual(physics['question_count'], 6)
+        self.assertEqual(physics['subdivisions'][0]['key'], 'light-and-sound')
 
     def test_review_interleave_puts_misses_later(self):
         mixed = interleave_reviews(['n1', 'n2', 'n3', 'n4'], ['r1', 'r2'])

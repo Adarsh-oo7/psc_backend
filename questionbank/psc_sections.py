@@ -203,6 +203,202 @@ def assign_topic_to_exam_section(topic_name: str, syllabus_rows: List[Dict[str, 
     return None
 
 
+# Chapters that must stay inside their subject. The first match wins.
+# A heading like "Chemistry — Acids, Bases & Salts" is also kept as its own
+# chapter under Chemistry, even when it is not listed here.
+SUBDIVISIONS: Dict[str, List[Tuple[str, str, Tuple[str, ...]]]] = {
+    'chemistry': [
+        ('elements-and-periodic-table', 'Elements and Periodic Table', ('periodic', 'element', 'isotope', 'atomic')),
+        ('acids-bases-and-salts', 'Acids, Bases and Salts', ('acid', 'alkali', 'bases', 'salts')),
+        ('compounds-and-reactions', 'Compounds and Reactions', ('compound', 'organic', 'oxidation', 'chemical reaction', 'mole')),
+        ('metals-and-non-metals', 'Metals and Non-metals', ('non-metal', 'metallurgy', 'alloy', 'reactivity series')),
+    ],
+    'physics': [
+        ('motion-force-and-laws', 'Motion, Force and Laws', ('motion', 'newton', 'gravitation', 'force and')),
+        ('heat-and-energy', 'Heat and Energy', ('heat', 'thermodynamic', 'temperature')),
+        ('light-and-sound', 'Light and Sound', ('optic', 'sound', 'light')),
+        ('electricity-and-magnetism', 'Electricity and Magnetism', ('electric', 'magnet', 'ohm')),
+    ],
+    'biology-and-public-health': [
+        ('human-body', 'Human Body', ('human body', 'physiology', 'heart', 'blood', 'digestive', 'anatomy')),
+        ('plants', 'Plant Kingdom', ('plant', 'photosynthesis', 'botany')),
+        ('diseases-and-health', 'Diseases and Public Health', ('disease', 'pathogen', 'vaccine', 'vitamin', 'nutrition', 'hygiene')),
+        ('cells-and-classification', 'Cells and Classification', ('classification', 'taxonomy', 'cell')),
+    ],
+    'public-health': [
+        ('diseases-and-health', 'Diseases and Public Health', ('disease', 'vaccine', 'hygiene', 'nutrition', 'sanitation')),
+    ],
+    'maths': [
+        ('number-system', 'Number System', ('number', 'hcf', 'lcm', 'fraction', 'simplification', 'bodmas')),
+        ('percentage-and-profit', 'Percentage and Profit', ('percentage', 'profit', 'loss', 'discount')),
+        ('ratio-and-interest', 'Ratio and Interest', ('ratio', 'proportion', 'interest', 'average')),
+        ('time-and-work', 'Time and Work', ('time and work', 'time & work', 'speed', 'distance', 'mensuration')),
+        ('reasoning', 'Reasoning', ('reasoning', 'series', 'coding', 'mental ability')),
+    ],
+    'history': [
+        ('ancient-and-medieval', 'Ancient and Medieval', ('ancient', 'medieval', 'mughal', 'dynasty')),
+        ('freedom-movement', 'Freedom Movement', ('freedom', 'independence', 'gandhi', 'revolt', 'national movement')),
+    ],
+    'geography': [
+        ('physical-geography', 'Physical Geography', ('river', 'mountain', 'climate', 'soil', 'monsoon', 'ocean')),
+        ('indian-geography', 'Indian Geography', ('india', 'indian')),
+        ('kerala-geography', 'Kerala Geography', ('kerala',)),
+    ],
+    'constitution-and-polity': [
+        ('preamble-and-rights', 'Preamble and Rights', ('preamble', 'fundamental right', 'directive principle')),
+        ('union-and-state', 'Union and State', ('parliament', 'president', 'governor', 'panchayat')),
+    ],
+    'facts-about-kerala': [
+        ('renaissance', 'Kerala Renaissance', ('renaissance', 'reform', 'sree narayana', 'chattampi')),
+        ('kerala-history', 'Kerala History', ('travancore', 'cochin', 'malabar', 'temple entry')),
+        ('kerala-culture', 'Kerala Culture', ('onam', 'kathakali', 'festival', 'culture')),
+    ],
+    'english': [
+        ('grammar', 'Grammar', ('tense', 'voice', 'speech', 'preposition', 'article')),
+        ('vocabulary', 'Vocabulary', ('synonym', 'antonym', 'vocabulary', 'spelling', 'idiom')),
+    ],
+    'malayalam': [
+        ('grammar', 'Grammar', ('സന്ധി', 'സമാസം', 'വാക്യശുദ്ധി', 'പദശുദ്ധി')),
+    ],
+    'computer': [
+        ('hardware-and-software', 'Hardware and Software', ('hardware', 'software', 'windows', 'ms office')),
+        ('internet', 'Internet', ('internet', 'email', 'network')),
+    ],
+    'important-laws': [
+        ('rights-and-protection', 'Rights and Protection Laws', ('rti', 'pocso', 'consumer', 'domestic violence')),
+    ],
+    'vocational-agriculture-topics': [
+        ('crops', 'Crops', ('paddy', 'coconut', 'crop', 'irrigation')),
+    ],
+    'daily-current-affairs': [
+        ('kerala-and-india', 'Kerala and India', ('kerala', 'india', 'award', 'appointment')),
+    ],
+    'arts-culture-literature-sports': [
+        ('arts-and-culture', 'Arts and Culture', ('dance', 'music', 'cinema', 'festival', 'kathakali')),
+        ('literature', 'Literature', ('literature', 'poet', 'novel')),
+        ('sports', 'Sports', ('sport', 'olympic', 'games')),
+    ],
+}
+
+
+def split_heading(name: str) -> Tuple[str, str]:
+    text = (name or '').strip()
+    for sep in (' — ', ' – ', ' - '):
+        if sep in text:
+            left, right = text.split(sep, 1)
+            return left.strip(), right.strip()
+    return text, ''
+
+
+def rules_for_section(section_title: str) -> List[Tuple[str, str, Tuple[str, ...]]]:
+    key = section_key(section_title)
+    sources = [key]
+    for child, parents in SECTION_PARENTS.items():
+        if any(section_key(parent) == key or parent == key for parent in parents):
+            sources.append(child)
+    ordered: List[Tuple[str, str, Tuple[str, ...]]] = []
+    seen = set()
+    for source in sources:
+        for row in SUBDIVISIONS.get(source, []):
+            if row[0] in seen:
+                continue
+            seen.add(row[0])
+            ordered.append(row)
+    return ordered
+
+
+def _match_rule(blob: str, rules) -> Optional[Tuple[str, str]]:
+    low = (blob or '').lower()
+    for key, label, needles in rules:
+        if any(needle in low for needle in needles):
+            return key, label
+    return None
+
+
+def subdivision_for(topic_name: str, sub_topic: str, section_title: str) -> Tuple[str, str]:
+    """Chapter key and label inside a subject. Unclassified questions stay in 'general'."""
+    rules = rules_for_section(section_title)
+    topic_name = topic_name or ''
+    sub_topic = sub_topic or ''
+    parent_key = section_key(section_title)
+
+    if section_key(topic_name) == parent_key and not split_heading(sub_topic)[1]:
+        matched = _match_rule(sub_topic, rules)
+        if matched:
+            return matched
+        return 'general', section_title
+
+    for raw in (topic_name, sub_topic):
+        parent, child = split_heading(raw)
+        if not child:
+            continue
+        if section_key(parent) != parent_key and parent_key not in section_key(parent) and section_key(parent) not in parent_key:
+            classified = classify_topic(parent, child)
+            if section_key(classified) != parent_key and parent_key not in SECTION_PARENTS.get(classified, []):
+                continue
+        matched = _match_rule(child, rules)
+        if matched:
+            return matched
+        return section_key(child)[:60], child[:80]
+
+    matched = _match_rule(f'{topic_name} {sub_topic}', rules)
+    if matched:
+        return matched
+    return 'general', section_title
+
+
+def belongs_to_section(topic_name: str, sub_topic: str, section_title: str, syllabus_rows: List[Dict[str, Any]]) -> bool:
+    assigned = assign_topic_to_exam_section(topic_name or '', syllabus_rows, sub_topic or '')
+    return bool(assigned) and assigned == section_title
+
+
+def summarize_section(groups, section_title: str, syllabus_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Fold question groups into chapters inside one subject.
+
+    groups: (topic_id, topic_name, sub_topic, count)
+    Every matching question is counted once, under a chapter or under general.
+    """
+    buckets: Dict[str, Dict[str, Any]] = {}
+    total = 0
+    for item in groups:
+        topic_id, name, sub = item[0], item[1] or '', item[2] or ''
+        count = int(item[3] if len(item) > 3 else 1)
+        if not belongs_to_section(name, sub, section_title, syllabus_rows):
+            continue
+        key, label = subdivision_for(name, sub, section_title)
+        bucket = buckets.setdefault(key, {'key': key, 'name': label, 'question_count': 0, 'pairs': []})
+        bucket['question_count'] += count
+        bucket['pairs'].append((topic_id, sub))
+        total += count
+    chapters = [row for row in buckets.values() if row['question_count'] > 0]
+    has_specific = any(row['key'] != 'general' for row in chapters)
+    for row in chapters:
+        if row['key'] == 'general' and has_specific:
+            row['name'] = 'Other questions'
+        row.pop('pairs', None)
+    chapters.sort(key=lambda row: (row['key'] == 'general', -row['question_count'], row['name']))
+    if len(chapters) == 1 and chapters[0]['key'] == 'general':
+        chapters = []
+    return {'question_count': total, 'subdivisions': chapters}
+
+
+def section_pairs(groups, section_title: str, syllabus_rows: List[Dict[str, Any]], subdivision: str = ''):
+    """(topic_id, sub_topic) pairs whose questions belong in this subject or chapter."""
+    wanted = (subdivision or '').strip()
+    pairs = []
+    for item in groups:
+        topic_id, name, sub = item[0], item[1] or '', item[2] or ''
+        if topic_id is None:
+            continue
+        if not belongs_to_section(name, sub, section_title, syllabus_rows):
+            continue
+        key, _label = subdivision_for(name, sub, section_title)
+        if wanted and key != wanted:
+            continue
+        pairs.append((topic_id, sub))
+    return pairs
+
+
 def section_meta(title: str, marks: int = 0) -> Dict[str, Any]:
     key = section_key(title)
     return {
