@@ -172,4 +172,6 @@ def _spread_answers(items):
     return spread
 
 
-SYLLABUS_MCQS = _spread_answers(SYLLABUS_MCQS)
+from questionbank.syllabus_mcqs_extra import EXTRA_MCQS
+
+SYLLABUS_MCQS = _spread_answers(SYLLABUS_MCQS + EXTRA_MCQS)

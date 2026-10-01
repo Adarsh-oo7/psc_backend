@@ -14,6 +14,12 @@ EXAM_TOPICS = {
         "Chemistry",
         "Biology and Public Health",
     },
+    "laboratory-attender": {
+        "Lab Safety and Instruments",
+        "Physics",
+        "Chemistry",
+        "Biology and Public Health",
+    },
     "motor-mechanic": {
         "Engine and Fuel System",
         "Brake Clutch and Transmission",
@@ -21,7 +27,55 @@ EXAM_TOPICS = {
         "Cooling and Lubrication",
         "Auto Electrical",
     },
-    "village-field-assistant": {"Vocational Agriculture Topics"},
+    "village-field-assistant": {
+        "Vocational Agriculture Topics",
+        "Physics",
+        "Chemistry",
+        "Biology and Public Health",
+        "Economics",
+        "Important Laws",
+        "Arts Culture Literature Sports",
+    },
+    "fire-and-rescue": {
+        "Fire and Rescue Special Topics",
+        "Physics",
+        "Chemistry",
+        "Biology and Public Health",
+    },
+    "nurse-grade-ii": {
+        "Anatomy and Physiology",
+        "Fundamentals of Nursing",
+        "Community Health and First Aid",
+        "Biology and Public Health",
+    },
+    "lineman": {
+        "Basic Electricity",
+        "Ohm's Law and Circuits",
+        "Overhead Lines and Safety",
+        "Transformers and Distribution",
+        "Instruments and Earthing",
+    },
+    "electrician": {
+        "Basic Electricity — Fundamentals, Resistance, Conductors, Wires",
+        "Ohm's Law — Kirchhoff's Law, Temperature Effects, Cell Types",
+        "Magnetism — Properties, Electromagnetism, Fleming's Rules, Faraday's Laws",
+        "Alternating Current and Earthing — AC, Earthing, Wiring, Megger",
+        "DC Machines — Generators, DC Motors, Starters",
+        "AC Motors — Single & 3 Phase, DOL, Star-Delta Starters",
+        "Instruments and Transformers — Measuring Instruments, EMF Equation",
+        "Illumination and Electronics — Lamps, Semiconductors, Diodes, Transistors",
+        "Power Generation — Energy Sources, Types of Power Generation",
+        "Transmission and Distribution — AC vs DC Comparison",
+    },
+    "special-branch-assistant": {"Special Branch and Police Topics"},
+    "civil-excise-officer": {"Excise Special Topics"},
+    "beat-forest-officer": {"Forest and Wildlife Special Topics"},
+    "police-constable-band": {"Band Music and Police Special Topics"},
+    "assistant-project-engineer": {
+        "Engineering Maths",
+        "Physics",
+        "Basic Engineering and Drawing",
+    },
 }
 
 # Counts follow the high-mark syllabus. They add up to 100.
@@ -60,6 +114,122 @@ SET_PLANS = {
         ("Maths", 10),
         ("English", 10),
         ("Malayalam", 10),
+    ],
+    "laboratory-attender": [
+        ("Physics", 15),
+        ("Chemistry", 15),
+        ("Biology and Public Health", 15),
+        ("Lab Safety and Instruments", 15),
+        ("Facts About Kerala", 10),
+        ("Maths", 10),
+        ("English", 10),
+        ("Daily Current Affairs", 10),
+    ],
+    "lineman": [
+        ("Basic Electricity", 15),
+        ("Ohm's Law and Circuits", 15),
+        ("Overhead Lines and Safety", 15),
+        ("Transformers and Distribution", 15),
+        ("Instruments and Earthing", 10),
+        ("Facts About Kerala", 10),
+        ("Maths", 10),
+        ("English", 10),
+    ],
+    "electrician": [
+        ("Basic Electricity — Fundamentals, Resistance, Conductors, Wires", 10),
+        ("Ohm's Law — Kirchhoff's Law, Temperature Effects, Cell Types", 10),
+        ("Magnetism — Properties, Electromagnetism, Fleming's Rules, Faraday's Laws", 10),
+        ("Alternating Current and Earthing — AC, Earthing, Wiring, Megger", 10),
+        ("DC Machines — Generators, DC Motors, Starters", 10),
+        ("AC Motors — Single & 3 Phase, DOL, Star-Delta Starters", 10),
+        ("Instruments and Transformers — Measuring Instruments, EMF Equation", 10),
+        ("Illumination and Electronics — Lamps, Semiconductors, Diodes, Transistors", 10),
+        ("Power Generation — Energy Sources, Types of Power Generation", 10),
+        ("Transmission and Distribution — AC vs DC Comparison", 10),
+    ],
+    "nurse-grade-ii": [
+        ("Anatomy and Physiology", 20),
+        ("Fundamentals of Nursing", 20),
+        ("Community Health and First Aid", 15),
+        ("Biology and Public Health", 10),
+        ("Facts About Kerala", 10),
+        ("Daily Current Affairs", 5),
+        ("English", 10),
+        ("Malayalam", 10),
+    ],
+    "fire-and-rescue": [
+        ("History", 5),
+        ("Geography", 5),
+        ("Economics", 5),
+        ("Constitution and Polity", 8),
+        ("Facts About Kerala", 3),
+        ("Biology and Public Health", 4),
+        ("Physics", 3),
+        ("Chemistry", 3),
+        ("Arts Culture Literature Sports", 4),
+        ("Daily Current Affairs", 10),
+        ("Maths", 10),
+        ("English", 10),
+        ("Malayalam", 10),
+        ("Fire and Rescue Special Topics", 20),
+    ],
+    "special-branch-assistant": [
+        ("History", 8),
+        ("Geography", 7),
+        ("Constitution and Polity", 10),
+        ("Facts About Kerala", 8),
+        ("Daily Current Affairs", 10),
+        ("Maths", 10),
+        ("English", 10),
+        ("Malayalam", 10),
+        ("Science", 7),
+        ("Special Branch and Police Topics", 20),
+    ],
+    "civil-excise-officer": [
+        ("History", 8),
+        ("Geography", 7),
+        ("Constitution and Polity", 10),
+        ("Facts About Kerala", 8),
+        ("Daily Current Affairs", 10),
+        ("Maths", 10),
+        ("English", 10),
+        ("Malayalam", 10),
+        ("Science", 7),
+        ("Excise Special Topics", 20),
+    ],
+    "beat-forest-officer": [
+        ("History", 8),
+        ("Geography", 10),
+        ("Facts About Kerala", 10),
+        ("Constitution and Polity", 8),
+        ("Daily Current Affairs", 10),
+        ("Science", 8),
+        ("Maths", 10),
+        ("English", 8),
+        ("Malayalam", 8),
+        ("Forest and Wildlife Special Topics", 20),
+    ],
+    "police-constable-band": [
+        ("History", 8),
+        ("Geography", 7),
+        ("Constitution and Polity", 10),
+        ("Facts About Kerala", 8),
+        ("Daily Current Affairs", 10),
+        ("Maths", 10),
+        ("English", 10),
+        ("Malayalam", 10),
+        ("Science", 7),
+        ("Band Music and Police Special Topics", 20),
+    ],
+    "assistant-project-engineer": [
+        ("Engineering Maths", 20),
+        ("Physics", 10),
+        ("Basic Engineering and Drawing", 20),
+        ("Constitution and Polity", 10),
+        ("Facts About Kerala", 10),
+        ("Daily Current Affairs", 10),
+        ("English", 10),
+        ("Computer", 10),
     ],
 }
 
@@ -190,8 +360,18 @@ class Command(BaseCommand):
             .order_by("-times_answered", "id")[:400]
         )
         backup = [q for q in backup if is_servable(q.text, q.options, q.correct_answer)]
-        ModelExam.objects.filter(exam=exam, name__startswith="Set ").delete()
-        made = 0
+        wider = []
+        for question in (
+            Question.objects.filter(exams=exam, is_public=True, status="approved")
+            .order_by("-times_answered", "id")[:1500]
+        ):
+            hay = f"{question.text} {getattr(question.topic, 'name', '')}".lower()
+            if any(phrase in hay for phrase in BLOCKED):
+                continue
+            if not is_servable(question.text, question.options, question.correct_answer):
+                continue
+            wider.append(question)
+        papers = []
         for index in range(10):
             used = set()
             chosen = []
@@ -221,17 +401,29 @@ class Command(BaseCommand):
                         continue
                     chosen.append(question)
                     used.add(question.id)
+            if len(chosen) < 100 and wider:
+                start = (index * 11) % len(wider)
+                rotated_wider = wider[start:] + wider[:start]
+                for question in rotated_wider:
+                    if len(chosen) >= 100:
+                        break
+                    if question.id in used:
+                        continue
+                    chosen.append(question)
+                    used.add(question.id)
             if len(chosen) < 100:
                 self.stderr.write(f"{exam.slug} set {index + 1} only {len(chosen)} questions")
-                continue
+                return 0
+            papers.append(chosen[:100])
+        ModelExam.objects.filter(exam=exam, name__startswith="Set ").delete()
+        for index, chosen in enumerate(papers):
             paper = ModelExam.objects.create(
                 name=f"Set {index + 1} — {exam.name}",
                 exam=exam,
                 duration_minutes=exam.duration_minutes or 75,
             )
-            paper.questions.set(chosen[:100])
-            made += 1
+            paper.questions.set(chosen)
             if index == 0:
                 special = sum(1 for q in chosen if "syllabus-2026" in (q.tags or []))
                 self.stdout.write(f"  set 1 syllabus items {special}/100")
-        return made
+        return len(papers)
