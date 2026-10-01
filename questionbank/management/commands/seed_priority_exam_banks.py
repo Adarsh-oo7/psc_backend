@@ -40,6 +40,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--exam-slug", type=str, help="Seed only this slug")
         parser.add_argument("--bank-size", type=int, default=BANK_SIZE)
+        parser.add_argument("--force", action="store_true", help="Replace a bank that already has questions")
 
     def handle(self, *args, **options):
         bank_size = options["bank_size"]
@@ -58,7 +59,13 @@ class Command(BaseCommand):
                 self.stderr.write(f"Unknown slug {only}")
                 return
 
+        force = bool(options.get("force"))
         for spec in rows:
+            if not only and not force:
+                existing = Exam.objects.filter(slug=spec["slug"]).first()
+                if existing and existing.questions.count() >= 200:
+                    self.stdout.write(f"Kept existing bank {existing.slug} ({existing.questions.count()} questions)")
+                    continue
             exam = self._upsert_exam(category, spec)
             self._upsert_syllabus_rows(exam, spec)
             attached = self._attach_questions(exam, spec, bank_size)

@@ -465,6 +465,44 @@ SYLLABUS_DATABASE = {
             {"topic": "Band Music and Police Special Topics", "marks": 20},
         ],
     },
+    "junior-lab-assistant": {
+        "name": "Junior Lab Assistant",
+        "cat_no": "733/2025",
+        "exam_date": "2026-10-03",
+        "level": "Plus Two Science",
+        "duration_minutes": 90,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "English",
+        "syllabus": [
+            {"topic": "Lab Safety and Instruments", "marks": 20},
+            {"topic": "Physics", "marks": 20},
+            {"topic": "Chemistry", "marks": 20},
+            {"topic": "Biology and Public Health", "marks": 20},
+            {"topic": "Facts About Kerala", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+        ],
+    },
+    "motor-mechanic": {
+        "name": "Motor Mechanic",
+        "cat_no": "630/2025",
+        "exam_date": "2026-10-13",
+        "level": "ITI",
+        "duration_minutes": 90,
+        "total_marks": 100,
+        "negative_marking": -0.33,
+        "medium": "English",
+        "syllabus": [
+            {"topic": "Engine and Fuel System", "marks": 20},
+            {"topic": "Brake Clutch and Transmission", "marks": 20},
+            {"topic": "Steering and Suspension", "marks": 10},
+            {"topic": "Cooling and Lubrication", "marks": 10},
+            {"topic": "Auto Electrical", "marks": 15},
+            {"topic": "Facts About Kerala", "marks": 10},
+            {"topic": "Maths", "marks": 10},
+            {"topic": "English", "marks": 5},
+        ],
+    },
 }
 
 # Helpers to map loose user preferred exam strings to official keys
@@ -500,6 +538,10 @@ def resolve_exam_slug(exam_slug):
         return 'electrician'
     if 'beat-forest' in normalized or 'beat forest' in normalized:
         return 'beat-forest-officer'
+    if 'junior-lab' in normalized or 'lab-assistant' in normalized:
+        return 'junior-lab-assistant'
+    if 'motor-mechanic' in normalized or 'motor mechanic' in normalized:
+        return 'motor-mechanic'
     if 'laboratory' in normalized or 'lab-attender' in normalized:
         return 'laboratory-attender'
     if 'project-engineer' in normalized or 'assistant-project' in normalized:
