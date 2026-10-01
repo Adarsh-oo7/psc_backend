@@ -3016,6 +3016,39 @@ class UserSearchView(views.APIView):
 # --- Master Study Plan & User Exam Progress Views ---
 # ===================================================================
 
+def _study_structure_for_exam(exam):
+    """Turn the official mark split into modules the home roadmap can render."""
+    from .psc_sections import exam_blueprint
+    blueprint = exam_blueprint(exam)
+    rows = list(blueprint.get('syllabus') or [])
+    if not rows:
+        return []
+    total = sum(int(row.get('marks') or 0) for row in rows) or 100
+    day = 0
+    structure = []
+    for row in rows:
+        title = row.get('topic') or 'Section'
+        marks = int(row.get('marks') or 0)
+        span = max(2, round(60 * marks / total))
+        day = min(60, day + span)
+        structure.append({
+            'subject': title,
+            'weightage': marks,
+            'modules': [{'name': title, 'target_day': day}],
+        })
+    return structure
+
+
+def _study_milestones(structure):
+    if not structure:
+        return []
+    chunks = [structure[i:i + 3] for i in range(0, len(structure), 3)]
+    return [
+        {'week': index + 1, 'goal': ', '.join(item['subject'] for item in chunk)}
+        for index, chunk in enumerate(chunks[:6])
+    ]
+
+
 class MasterStudyPlanView(views.APIView):
     """
     Retrieves the shared Master Study Plan for a specific exam (or student's primary exam).
@@ -3047,6 +3080,10 @@ class MasterStudyPlanView(views.APIView):
                     syllabus_structure=[],
                     weekly_milestones=[]
                 )
+            if not plan.syllabus_structure:
+                plan.syllabus_structure = _study_structure_for_exam(exam)
+                plan.weekly_milestones = plan.weekly_milestones or _study_milestones(plan.syllabus_structure)
+                plan.save(update_fields=['syllabus_structure', 'weekly_milestones'])
 
             serializer = MasterStudyPlanSerializer(plan)
             return Response(serializer.data)
