@@ -455,6 +455,39 @@ class AddStudentByUsernameView(APIView):
         return Response(UserProfileSerializer(profile).data, status=status.HTTP_200_OK)
 
 
+class StudentLeaveInstituteView(APIView):
+    """
+    Allows an enrolled student to exit/leave their academy.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if not profile.institute:
+            return Response({'error': 'You are not enrolled in any academy.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        # Institute owner cannot leave their own academy
+        if hasattr(request.user, 'owned_institute') and request.user.owned_institute and request.user.owned_institute == profile.institute:
+            return Response({'error': 'You are the owner of this academy and cannot exit it.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        institute_name = profile.institute.name
+        institute = profile.institute
+
+        # Remove student from batches
+        BatchMembership.objects.filter(student_profile=profile, batch__institute=institute).delete()
+        # Remove any join requests
+        InstituteJoinRequest.objects.filter(student_profile=profile, institute=institute).delete()
+
+        # Detach institute
+        profile.institute = None
+        profile.save(update_fields=['institute'])
+
+        return Response({
+            'detail': f'You have successfully exited {institute_name}.',
+            'status': 'success'
+        }, status=status.HTTP_200_OK)
+
+
 class BatchListCreateView(generics.ListCreateAPIView):
     """
     List and create student batches for an institute.

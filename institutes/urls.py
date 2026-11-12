@@ -32,6 +32,7 @@ urlpatterns = [
     path('my-test-history/<slug:slug>/', views.StudentMyTestHistoryView.as_view(), name='student-my-test-history'),
     path('leaderboard/', views.InstituteLeaderboardView.as_view(), name='institute-leaderboard'),
     path('students/add-by-username/', views.AddStudentByUsernameView.as_view(), name='institute-add-student-by-username'),
+    path('student/leave/', views.StudentLeaveInstituteView.as_view(), name='student-leave-institute'),
     path('students/<int:student_pk>/fees/', views.StudentFeeDashboardView.as_view(), name='student-fee-dashboard'),
     path('students/<int:student_pk>/results/', views.InstituteStudentResultsView.as_view(), name='student-results'),
     path('students/<int:student_pk>/record-payment/', views.StudentPaymentCreateView.as_view(), name='student-record-payment'),
