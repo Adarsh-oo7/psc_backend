@@ -29,6 +29,10 @@ class Institute(models.Model):
     login_image_2 = models.ImageField(upload_to='custom_login/', null=True, blank=True)
     login_image_3 = models.ImageField(upload_to='custom_login/', null=True, blank=True)
 
+    # Institute Feature Controls & Privacy Settings
+    show_leaderboard = models.BooleanField(default=True, help_text="Allow students to view the academy leaderboard")
+    allow_student_tests = models.BooleanField(default=True, help_text="Allow approved students to take mock tests")
+
     def __str__(self):
         return self.name
 
@@ -184,3 +188,70 @@ class Note(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class InstituteMockTest(models.Model):
+    """
+    Mock Test created by an institute admin with customizable time, scheduling,
+    repeatability, and question list.
+    """
+    institute = models.ForeignKey('Institute', on_delete=models.CASCADE, related_name='mock_tests')
+    batch = models.ForeignKey(Batch, on_delete=models.SET_NULL, null=True, blank=True, related_name='mock_tests')
+    title = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    duration_minutes = models.PositiveIntegerField(default=60, help_text="Total test duration in minutes")
+    time_limit_per_question = models.PositiveIntegerField(default=0, help_text="Optional time limit per question in seconds (0 = full test timer)")
+    can_repeat = models.BooleanField(default=False, help_text="Allow students to repeat/retake the test (default: False/off)")
+    start_time = models.DateTimeField(null=True, blank=True, help_text="Start time when students can begin attending (e.g. 5:00 PM)")
+    end_time = models.DateTimeField(null=True, blank=True, help_text="End time when test window closes (e.g. 6:00 PM)")
+    is_active = models.BooleanField(default=True)
+    questions = models.ManyToManyField('questionbank.Question', related_name='institute_mock_tests', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.title} - {self.institute.name}"
+
+    @property
+    def question_count(self):
+        return self.questions.count()
+
+    def get_status(self):
+        from django.utils import timezone
+        now = timezone.now()
+        if not self.is_active:
+            return 'inactive'
+        if self.start_time and now < self.start_time:
+            return 'upcoming'
+        if self.end_time and now > self.end_time:
+            return 'closed'
+        return 'live'
+
+
+class InstituteTestAttempt(models.Model):
+    """
+    Stores an official test attempt by an institute student.
+    Tracks test title, questions answered, right/wrong counts, PSC score, and answer details.
+    """
+    institute = models.ForeignKey('Institute', on_delete=models.CASCADE, related_name='test_attempts')
+    student = models.ForeignKey(User, on_delete=models.CASCADE, related_name='institute_test_attempts')
+    mock_test = models.ForeignKey(InstituteMockTest, on_delete=models.SET_NULL, null=True, blank=True, related_name='attempts')
+    test_title = models.CharField(max_length=255, default='Academy Mock Test')
+    total_questions = models.PositiveIntegerField(default=0)
+    attempted = models.PositiveIntegerField(default=0)
+    correct = models.PositiveIntegerField(default=0)
+    wrong = models.PositiveIntegerField(default=0)
+    unanswered = models.PositiveIntegerField(default=0)
+    score = models.FloatField(default=0.0) # Correct - (Wrong * 0.33)
+    accuracy = models.FloatField(default=0.0)
+    details = models.JSONField(default=dict, blank=True)
+    completed_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-completed_at']
+
+    def __str__(self):
+        return f"{self.student.username} - {self.test_title} ({self.score} pts)"

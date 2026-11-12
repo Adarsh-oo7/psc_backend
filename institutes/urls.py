@@ -27,8 +27,13 @@ urlpatterns = [
     path('join-requests/<int:request_id>/<str:action>/', views.ProcessJoinRequestView.as_view(), name='process-join-request'),
     path('public/list/', views.PublicInstituteListView.as_view(), name='public-institute-list'),
     path('public/detail/<slug:slug>/', views.PublicInstituteDetailView.as_view(), name='public-institute-detail'),
+    path('public/portal/<slug:slug>/', views.PublicInstitutePortalView.as_view(), name='public-institute-portal'),
+    path('public/submit-test/<slug:slug>/', views.PublicInstituteSubmitTestView.as_view(), name='public-institute-submit-test'),
+    path('my-test-history/<slug:slug>/', views.StudentMyTestHistoryView.as_view(), name='student-my-test-history'),
+    path('leaderboard/', views.InstituteLeaderboardView.as_view(), name='institute-leaderboard'),
     path('students/add-by-username/', views.AddStudentByUsernameView.as_view(), name='institute-add-student-by-username'),
     path('students/<int:student_pk>/fees/', views.StudentFeeDashboardView.as_view(), name='student-fee-dashboard'),
+    path('students/<int:student_pk>/results/', views.InstituteStudentResultsView.as_view(), name='student-results'),
     path('students/<int:student_pk>/record-payment/', views.StudentPaymentCreateView.as_view(), name='student-record-payment'),
     
     # Batches, Attendance, Notes
@@ -39,4 +44,11 @@ urlpatterns = [
     path('notes/', views.NoteListCreateView.as_view(), name='note-list'),
     path('notes/<int:pk>/', views.NoteDetailView.as_view(), name='note-detail'),
 
+    # Mock Tests (Admin CRUD, scheduling, question assignment, and student exam taking)
+    path('mock-tests/', views.InstituteMockTestListCreateView.as_view(), name='institute-mock-tests'),
+    path('mock-tests/<int:pk>/', views.InstituteMockTestDetailView.as_view(), name='institute-mock-test-detail'),
+    path('mock-tests/<int:pk>/submissions/', views.InstituteMockTestSubmissionsView.as_view(), name='institute-mock-test-submissions'),
+    path('mock-tests/<int:pk>/add-question/', views.InstituteMockTestAddQuestionView.as_view(), name='institute-mock-test-add-question'),
+    path('mock-tests/<int:pk>/manage-questions/', views.InstituteMockTestManageQuestionsView.as_view(), name='institute-mock-test-manage-questions'),
+    path('public/mock-test/<slug:slug>/<int:test_id>/questions/', views.PublicInstituteMockTestQuestionsView.as_view(), name='public-institute-mock-test-questions'),
 ]
