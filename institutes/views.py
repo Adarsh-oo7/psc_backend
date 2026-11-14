@@ -759,12 +759,21 @@ class InstituteLeaderboardView(APIView):
             avatar = None
             if p.profile_photo and hasattr(p.profile_photo, 'url'):
                 avatar = request.build_absolute_uri(p.profile_photo.url)
+            raw_phone = str(p.phone_number or '').strip()
+            digits = ''.join(ch for ch in raw_phone if ch.isdigit())
+            if len(digits) == 12 and digits.startswith('91'):
+                digits = digits[2:]
+            elif len(digits) == 11 and digits.startswith('0'):
+                digits = digits[1:]
+            phone = digits or raw_phone
+
             leaderboard.append({
                 'student_profile_id': p.id,
                 'user_id': p.user_id,
                 'username': p.user.username,
                 'full_name': p.user.get_full_name() or p.user.username,
                 'email': p.user.email,
+                'phone_number': phone,
                 'avatar': avatar,
                 'xp': st.get('academy_xp', 0),
                 'level': p.level,
@@ -1216,9 +1225,15 @@ class InstituteMockTestSubmissionsView(APIView):
         attempts = InstituteTestAttempt.objects.filter(mock_test=test).select_related('student', 'student__userprofile').order_by('-score', 'completed_at')
         submissions = []
         for idx, att in enumerate(attempts):
-            phone = ''
+            raw_phone = ''
             if hasattr(att.student, 'userprofile') and att.student.userprofile.phone_number:
-                phone = att.student.userprofile.phone_number
+                raw_phone = str(att.student.userprofile.phone_number).strip()
+            digits = ''.join(ch for ch in raw_phone if ch.isdigit())
+            if len(digits) == 12 and digits.startswith('91'):
+                digits = digits[2:]
+            elif len(digits) == 11 and digits.startswith('0'):
+                digits = digits[1:]
+            phone = digits or raw_phone
             submissions.append({
                 'id': att.id,
                 'rank': idx + 1,
@@ -1238,6 +1253,7 @@ class InstituteMockTestSubmissionsView(APIView):
                 'details': (att.details or {}).get('results', []),
             })
         return Response({
+            'total_submissions': len(submissions),
             'test': {
                 'id': test.id,
                 'title': test.title,
