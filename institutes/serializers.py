@@ -94,11 +94,19 @@ class JoinRequestSerializer(serializers.ModelSerializer):
     # we nest the simple UserSerializer by pointing to the source.
     user = UserSerializer(source='student_profile.user', read_only=True)
     profile_photo = serializers.SerializerMethodField()
+    phone_number = serializers.CharField(source='student_profile.phone_number', read_only=True)
+    full_name = serializers.SerializerMethodField()
 
     class Meta:
         model = InstituteJoinRequest
-        fields = ['id', 'user', 'profile_photo', 'institute', 'status', 'requested_at']
-        read_only_fields = ['id', 'user', 'profile_photo', 'status', 'requested_at']
+        fields = ['id', 'user', 'full_name', 'phone_number', 'profile_photo', 'institute', 'status', 'requested_at']
+        read_only_fields = ['id', 'user', 'full_name', 'phone_number', 'profile_photo', 'status', 'requested_at']
+
+    def get_full_name(self, obj):
+        if obj.student_profile and obj.student_profile.user:
+            fn = f"{obj.student_profile.user.first_name} {obj.student_profile.user.last_name}".strip()
+            return fn or obj.student_profile.user.username
+        return ''
 
     def get_profile_photo(self, obj):
         if obj.student_profile and obj.student_profile.profile_photo:
