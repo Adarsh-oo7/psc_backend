@@ -944,6 +944,10 @@ class PublicInstitutePortalView(APIView):
                 'can_start': can_start,
                 'latest_score': student_attempt.score if student_attempt else None,
                 'latest_accuracy': student_attempt.accuracy if student_attempt else None,
+                'latest_correct': student_attempt.correct if student_attempt else None,
+                'latest_wrong': student_attempt.wrong if student_attempt else None,
+                'latest_unanswered': student_attempt.unanswered if student_attempt else None,
+                'latest_tab_switches': (student_attempt.details or {}).get('tab_switches', 0) if student_attempt else 0,
                 'attempt_details': student_attempt.details if student_attempt else None,
                 'completed_at': student_attempt.completed_at.isoformat() if student_attempt else None,
             })
@@ -1084,6 +1088,7 @@ class PublicInstituteSubmitTestView(APIView):
             'wrong': wrong_count,
             'unanswered': unanswered,
             'accuracy': accuracy,
+            'tab_switches': tab_switches,
             'completed_at': attempt.completed_at.isoformat(),
             'details': details_list,
         })
