@@ -1213,9 +1213,12 @@ class InstituteMockTestSubmissionsView(APIView):
 
     def get(self, request, pk):
         test = get_object_or_404(InstituteMockTest, pk=pk, institute=request.user.owned_institute)
-        attempts = InstituteTestAttempt.objects.filter(mock_test=test).select_related('student').order_by('-score', 'completed_at')
+        attempts = InstituteTestAttempt.objects.filter(mock_test=test).select_related('student', 'student__userprofile').order_by('-score', 'completed_at')
         submissions = []
         for idx, att in enumerate(attempts):
+            phone = ''
+            if hasattr(att.student, 'userprofile') and att.student.userprofile.phone_number:
+                phone = att.student.userprofile.phone_number
             submissions.append({
                 'id': att.id,
                 'rank': idx + 1,
@@ -1223,6 +1226,7 @@ class InstituteMockTestSubmissionsView(APIView):
                 'student_name': att.student.get_full_name() or att.student.username,
                 'username': att.student.username,
                 'email': att.student.email,
+                'phone_number': phone,
                 'score': att.score,
                 'accuracy': att.accuracy,
                 'total_questions': att.total_questions,
