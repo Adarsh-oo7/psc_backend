@@ -1057,6 +1057,8 @@ class PublicInstituteSubmitTestView(APIView):
         final_score = round((correct_count * 1.0) - (wrong_count * 0.33), 2)
         accuracy = round((correct_count / attempted) * 100, 1) if attempted > 0 else 0.0
 
+        tab_switches = int(request.data.get('tab_switches', 0) or 0)
+
         attempt = InstituteTestAttempt.objects.create(
             institute=institute,
             student=request.user,
@@ -1069,7 +1071,7 @@ class PublicInstituteSubmitTestView(APIView):
             unanswered=unanswered,
             score=final_score,
             accuracy=accuracy,
-            details={'results': details_list},
+            details={'results': details_list, 'tab_switches': tab_switches},
         )
 
         return Response({
@@ -1234,6 +1236,7 @@ class InstituteMockTestSubmissionsView(APIView):
             elif len(digits) == 11 and digits.startswith('0'):
                 digits = digits[1:]
             phone = digits or raw_phone
+            tab_switches = int((att.details or {}).get('tab_switches', 0) or 0)
             submissions.append({
                 'id': att.id,
                 'rank': idx + 1,
@@ -1242,6 +1245,7 @@ class InstituteMockTestSubmissionsView(APIView):
                 'username': att.student.username,
                 'email': att.student.email,
                 'phone_number': phone,
+                'tab_switches': tab_switches,
                 'score': att.score,
                 'accuracy': att.accuracy,
                 'total_questions': att.total_questions,
