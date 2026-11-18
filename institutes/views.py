@@ -999,6 +999,21 @@ class PublicInstituteSubmitTestView(APIView):
                     if InstituteTestAttempt.objects.filter(mock_test=mock_test, student=request.user).exists():
                         return Response({'error': 'You have already submitted this test. Retakes are not allowed.'}, status=400)
 
+        # Ensure user's phone_number is captured if provided in request
+        phone_input = str(request.data.get('phone_number', '') or '').strip()
+        if phone_input:
+            clean_digits = ''.join(ch for ch in phone_input if ch.isdigit())
+            if len(clean_digits) == 12 and clean_digits.startswith('91'):
+                clean_digits = clean_digits[2:]
+            elif len(clean_digits) == 11 and clean_digits.startswith('0'):
+                clean_digits = clean_digits[1:]
+            clean_phone = clean_digits[-10:]
+            if len(clean_phone) == 10:
+                user_profile, _ = UserProfile.objects.get_or_create(user=request.user)
+                if not user_profile.phone_number or user_profile.phone_number != clean_phone:
+                    user_profile.phone_number = clean_phone
+                    user_profile.save(update_fields=['phone_number'])
+
         if not question_ids:
             return Response({'error': 'No question IDs provided.'}, status=400)
 
@@ -1066,20 +1081,37 @@ class PublicInstituteSubmitTestView(APIView):
 
         tab_switches = int(request.data.get('tab_switches', 0) or 0)
 
-        attempt = InstituteTestAttempt.objects.create(
-            institute=institute,
-            student=request.user,
-            mock_test=mock_test,
-            test_title=test_title,
-            total_questions=len(question_ids),
-            attempted=attempted,
-            correct=correct_count,
-            wrong=wrong_count,
-            unanswered=unanswered,
-            score=final_score,
-            accuracy=accuracy,
-            details={'results': details_list, 'tab_switches': tab_switches},
-        )
+        existing_attempt = None
+        if mock_test:
+            existing_attempt = InstituteTestAttempt.objects.filter(mock_test=mock_test, student=request.user).first()
+
+        if existing_attempt:
+            existing_attempt.total_questions = len(question_ids)
+            existing_attempt.attempted = attempted
+            existing_attempt.correct = correct_count
+            existing_attempt.wrong = wrong_count
+            existing_attempt.unanswered = unanswered
+            existing_attempt.score = final_score
+            existing_attempt.accuracy = accuracy
+            existing_attempt.details = {'results': details_list, 'tab_switches': tab_switches}
+            existing_attempt.completed_at = timezone.now()
+            existing_attempt.save()
+            attempt = existing_attempt
+        else:
+            attempt = InstituteTestAttempt.objects.create(
+                institute=institute,
+                student=request.user,
+                mock_test=mock_test,
+                test_title=test_title,
+                total_questions=len(question_ids),
+                attempted=attempted,
+                correct=correct_count,
+                wrong=wrong_count,
+                unanswered=unanswered,
+                score=final_score,
+                accuracy=accuracy,
+                details={'results': details_list, 'tab_switches': tab_switches},
+            )
 
         return Response({
             'attempt_id': attempt.id,
@@ -1232,9 +1264,20 @@ class InstituteMockTestSubmissionsView(APIView):
 
     def get(self, request, pk):
         test = get_object_or_404(InstituteMockTest, pk=pk, institute=request.user.owned_institute)
-        attempts = InstituteTestAttempt.objects.filter(mock_test=test).select_related('student', 'student__userprofile').order_by('-score', 'completed_at')
+        attempts = (
+            InstituteTestAttempt.objects.filter(mock_test=test)
+            .select_related('student', 'student__userprofile')
+            .order_by('-score', '-completed_at')
+        )
+        seen_students = set()
+        unique_attempts = []
+        for att in attempts:
+            if att.student_id not in seen_students:
+                seen_students.add(att.student_id)
+                unique_attempts.append(att)
+
         submissions = []
-        for idx, att in enumerate(attempts):
+        for idx, att in enumerate(unique_attempts):
             raw_phone = ''
             if hasattr(att.student, 'userprofile') and att.student.userprofile.phone_number:
                 raw_phone = str(att.student.userprofile.phone_number).strip()
@@ -1346,6 +1389,35 @@ class PublicInstituteMockTestQuestionsView(APIView):
             },
             'questions': questions_data,
         })
+
+
+class InstituteUpdateStudentPhoneView(APIView):
+    """
+    Allows institute owner to update or link a student's WhatsApp phone number.
+    """
+    permission_classes = [IsInstituteOwner]
+
+    def post(self, request, pk):
+        from django.contrib.auth.models import User
+        from questionbank.models import UserProfile
+
+        raw_phone = str(request.data.get('phone_number', '') or '').strip()
+        digits = ''.join(ch for ch in raw_phone if ch.isdigit())
+        if len(digits) == 12 and digits.startswith('91'):
+            digits = digits[2:]
+        elif len(digits) == 11 and digits.startswith('0'):
+            digits = digits[1:]
+        clean_phone = digits[-10:]
+
+        if len(clean_phone) != 10:
+            return Response({'error': 'Please enter a valid 10-digit WhatsApp mobile number.'}, status=400)
+
+        user = get_object_or_404(User, pk=pk)
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        profile.phone_number = clean_phone
+        profile.save(update_fields=['phone_number'])
+        return Response({'success': True, 'phone_number': clean_phone, 'student_id': user.id})
+
 
 
 

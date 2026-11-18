@@ -36,6 +36,7 @@ urlpatterns = [
     path('students/<int:student_pk>/fees/', views.StudentFeeDashboardView.as_view(), name='student-fee-dashboard'),
     path('students/<int:student_pk>/results/', views.InstituteStudentResultsView.as_view(), name='student-results'),
     path('students/<int:student_pk>/record-payment/', views.StudentPaymentCreateView.as_view(), name='student-record-payment'),
+    path('students/<int:pk>/phone/', views.InstituteUpdateStudentPhoneView.as_view(), name='institute-student-phone'),
     
     # Batches, Attendance, Notes
     path('batches/', views.BatchListCreateView.as_view(), name='batch-list'),
