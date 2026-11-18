@@ -1419,5 +1419,24 @@ class InstituteUpdateStudentPhoneView(APIView):
         return Response({'success': True, 'phone_number': clean_phone, 'student_id': user.id})
 
 
+class InstituteMockTestClearSubmissionsView(APIView):
+    """
+    Clears all candidate submissions/attempts for a specific mock test.
+    The mock test questions, answer keys, and configurations remain intact.
+    """
+    permission_classes = [IsInstituteOwner]
+
+    def post(self, request, pk):
+        test = get_object_or_404(InstituteMockTest, pk=pk, institute=request.user.owned_institute)
+        deleted_count, _ = InstituteTestAttempt.objects.filter(mock_test=test).delete()
+        return Response({
+            'success': True,
+            'message': f'Successfully cleared {deleted_count} submission(s). Leaderboard reset to 0.',
+            'deleted_count': deleted_count,
+            'test_id': test.id,
+        })
+
+
+
 
 

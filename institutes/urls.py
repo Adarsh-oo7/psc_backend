@@ -50,6 +50,7 @@ urlpatterns = [
     path('mock-tests/', views.InstituteMockTestListCreateView.as_view(), name='institute-mock-tests'),
     path('mock-tests/<int:pk>/', views.InstituteMockTestDetailView.as_view(), name='institute-mock-test-detail'),
     path('mock-tests/<int:pk>/submissions/', views.InstituteMockTestSubmissionsView.as_view(), name='institute-mock-test-submissions'),
+    path('mock-tests/<int:pk>/clear-submissions/', views.InstituteMockTestClearSubmissionsView.as_view(), name='institute-mock-test-clear-submissions'),
     path('mock-tests/<int:pk>/add-question/', views.InstituteMockTestAddQuestionView.as_view(), name='institute-mock-test-add-question'),
     path('mock-tests/<int:pk>/manage-questions/', views.InstituteMockTestManageQuestionsView.as_view(), name='institute-mock-test-manage-questions'),
     path('public/mock-test/<slug:slug>/<int:test_id>/questions/', views.PublicInstituteMockTestQuestionsView.as_view(), name='public-institute-mock-test-questions'),
