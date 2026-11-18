@@ -886,10 +886,13 @@ class PublicInstitutePortalView(APIView):
             row['rank'] = idx + 1
 
         # Check institute leaderboard visibility control
-        show_leaderboard_to_user = (
-            institute.show_leaderboard or membership_status == 'owner'
-        )
-        if not show_leaderboard_to_user:
+        # Academy owner sees all students. Regular students only see their own score/rank, never other students' results.
+        if membership_status == 'owner':
+            if not institute.show_leaderboard:
+                leaderboard = []
+        elif request.user and request.user.is_authenticated:
+            leaderboard = [row for row in leaderboard if row['username'] == request.user.username]
+        else:
             leaderboard = []
 
         can_access_content = membership_status in ('member', 'owner')
